@@ -12,7 +12,8 @@ export class SqliteStore {
     this.workerPath = path.join(__dirname, 'sqlite_worker.py');
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
     this.proc = spawn(pythonCmd, [this.workerPath, this.dbPath], {
-      stdio: ['pipe', 'pipe', 'inherit'],
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true,
     });
     this.proc.on('error', (err) => {
       console.error('[SqliteStore] Worker process error:', err);

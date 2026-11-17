@@ -503,6 +503,7 @@ export class WorkspaceManager {
       const diff = execFileSync('git', ['diff', 'HEAD', '--', fullPath], {
         cwd: this.activeWorkspace,
         encoding: 'utf8',
+        windowsHide: true,
       });
       return { path: relPath, diff: diff || 'No uncommitted diff against HEAD.' };
     } catch (err) {

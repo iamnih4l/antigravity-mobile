@@ -31,6 +31,7 @@ export class TerminalManager {
         cwd,
         env: { ...process.env, TERM: 'xterm-256color' },
         stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       });
     } else {
       proc = spawn('python3', ['-u', '-c', 'import pty, os; pty.spawn(os.environ.get("SHELL", "/bin/bash"))'], {

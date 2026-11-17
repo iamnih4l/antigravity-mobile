@@ -14,7 +14,7 @@ function which(cmd) {
   try {
     const isWin = process.platform === 'win32';
     const checkCmd = isWin ? `where.exe ${cmd}` : `command -v ${cmd}`;
-    const res = execSync(checkCmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const res = execSync(checkCmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim();
     return res ? res.split(/\r?\n/)[0].trim() : null;
   } catch {
     return null;
@@ -23,7 +23,7 @@ function which(cmd) {
 
 function getVersion(cmd, flag = '--version') {
   try {
-    return execSync(`${cmd} ${flag}`, { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] }).trim().split('\n')[0];
+    return execSync(`${cmd} ${flag}`, { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }).trim().split('\n')[0];
   } catch {
     return null;
   }
