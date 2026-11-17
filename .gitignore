@@ -33,6 +33,8 @@ Thumbs.db
 companion-service/data/*.db
 companion-service/data/*.db-wal
 companion-service/data/*.db-shm
+companion-service/data/tunnel-state.json
+companion-service/data/workspaces.json
 
 # IDE Extension build artifacts
 ide-extension/out/

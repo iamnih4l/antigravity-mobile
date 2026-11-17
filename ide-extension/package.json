@@ -19,7 +19,15 @@
     "commands": [
       {
         "command": "antigravityMobile.pairDevice",
-        "title": "Antigravity Mobile: Pair Smartphone via QR Code"
+        "title": "Antigravity Mobile: Show Mobile QR Code"
+      },
+      {
+        "command": "antigravityMobile.setPwaUrl",
+        "title": "Antigravity Mobile: Set Vercel Web App URL"
+      },
+      {
+        "command": "antigravityMobile.restartTunnel",
+        "title": "Antigravity Mobile: Restart Cloudflare Tunnel"
       },
       {
         "command": "antigravityMobile.syncModels",
@@ -37,8 +45,27 @@
           "type": "string",
           "default": "http://127.0.0.1:8787",
           "description": "Local Loopback URL for the Antigravity Mobile Companion Service"
+        },
+        "antigravityMobile.pwaUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Your deployed Vercel Web App URL (e.g. https://antigravity-mobile.vercel.app)"
+        },
+        "antigravityMobile.autoStartTunnel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start Cloudflare Quick Tunnel when Antigravity IDE opens"
+        },
+        "antigravityMobile.companionScriptPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional explicit path to companion-service/src/server.mjs"
         }
       }
     }
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4"
   }
 }
