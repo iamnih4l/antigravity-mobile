@@ -1,9 +1,0 @@
-src/**
-tsconfig.json
-.vscode/**
-**/*.map
-**/*.ts
-!out/**
-node_modules/@types/**
-companion-service/data/**
-companion-service/test/**
