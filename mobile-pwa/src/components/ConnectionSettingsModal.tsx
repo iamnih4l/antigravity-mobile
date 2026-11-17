@@ -19,7 +19,7 @@ interface ConnectionSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUrl: string;
-  onSaveUrl: (url: string) => Promise<boolean>;
+  onSaveUrl: (url: string) => Promise<{ ok: boolean; message?: string }>;
   isOnline: boolean;
   onOpenQrModal: () => void;
 }
@@ -47,14 +47,14 @@ export function ConnectionSettingsModal({
 
     const formatted = urlInput.trim().replace(/\/+$/, '');
     try {
-      const ok = await onSaveUrl(formatted);
-      if (ok) {
+      const res = await onSaveUrl(formatted);
+      if (res.ok) {
         setTestResult({ ok: true, message: 'Successfully connected to Companion Service!' });
         setTimeout(() => onClose(), 1200);
       } else {
         setTestResult({
           ok: false,
-          message: 'Could not reach /api/health. Ensure the companion daemon and tunnel are running.',
+          message: res.message || 'Could not reach /api/health. Check daemon status.',
         });
       }
     } catch (err: unknown) {
@@ -176,12 +176,12 @@ export function ConnectionSettingsModal({
             Recommended HTTPS Tunnels (Run on your laptop)
           </label>
 
-          {/* Option 1: Tailscale Serve */}
+          {/* Option 1: Tailscale Funnel */}
           <div className="hairline-card p-2.5 rounded-lg bg-surface/30 border border-hairline space-y-1">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-white">1. Tailscale Serve (Best for private VPN)</span>
+              <span className="font-semibold text-white">1. Tailscale Funnel (Public HTTPS with Zero Config)</span>
               <button
-                onClick={() => copyCommand('tailscale serve --bg 8787', 'ts')}
+                onClick={() => copyCommand('tailscale funnel --bg 8787', 'ts')}
                 className="text-[10px] font-mono text-indigo-400 hover:underline flex items-center gap-1"
               >
                 {copiedTunnel === 'ts' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
@@ -189,7 +189,7 @@ export function ConnectionSettingsModal({
               </button>
             </div>
             <div className="font-mono text-[10px] text-zinc-400 bg-obsidian p-1.5 rounded">
-              tailscale serve --bg 8787
+              tailscale funnel --bg 8787
             </div>
           </div>
 

@@ -113,27 +113,73 @@ export default function Home() {
       if (stored) return stored;
       if (process.env.NEXT_PUBLIC_COMPANION_URL) return process.env.NEXT_PUBLIC_COMPANION_URL;
       const hostname = window.location.hostname;
-      if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
-        return `${protocol}://${hostname}:8787`;
+      // If accessing directly from raw local IP
+      const isLocalIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+      if (isLocalIp) {
+        return `http://${hostname}:8787`;
+      }
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return 'http://127.0.0.1:8787';
       }
     }
-    return process.env.NEXT_PUBLIC_COMPANION_URL || 'http://127.0.0.1:8787';
+    return process.env.NEXT_PUBLIC_COMPANION_URL || 'https://nihals-pc.tail4382b3.ts.net';
   };
 
-  const handleSaveCompanionUrl = async (newUrl: string): Promise<boolean> => {
+  const handleSaveCompanionUrl = async (rawUrl: string): Promise<{ ok: boolean; message?: string }> => {
+    let cleanUrl = rawUrl.trim();
+    if (!cleanUrl) return { ok: false, message: 'URL cannot be empty' };
+
+    // Strip trailing slashes and /api/health
+    cleanUrl = cleanUrl.replace(/\/+$/, '').replace(/\/api\/health$/, '');
+
+    // Add https:// prefix if protocol is omitted
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = `https://${cleanUrl}`;
+    }
+
+    // Check mixed content when hosted on https:
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      cleanUrl.startsWith('http://') &&
+      !cleanUrl.includes('localhost') &&
+      !cleanUrl.includes('127.0.0.1')
+    ) {
+      return {
+        ok: false,
+        message: 'Mixed Content Error: HTTPS web apps cannot call insecure http:// URLs. Use https:// (Tailscale / Cloudflare tunnel).',
+      };
+    }
+
     try {
-      const res = await fetch(`${newUrl}/api/health`, { method: 'GET' });
-      if (!res.ok) return false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch(`${cleanUrl}/api/health`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        return { ok: false, message: `Server responded with HTTP ${res.status}` };
+      }
       const data = await res.json();
       if (data.status === 'online') {
-        getClient().setBaseUrl(newUrl);
+        localStorage.setItem('agm_companion_url', cleanUrl);
+        getClient().setBaseUrl(cleanUrl);
         refreshAll();
-        return true;
+        return { ok: true };
       }
-      return false;
-    } catch {
-      return false;
+      return { ok: false, message: 'Unexpected response from companion service.' };
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return { ok: false, message: 'Connection timed out after 6 seconds. Verify your tunnel or Tailscale status.' };
+      }
+      return {
+        ok: false,
+        message: err instanceof Error ? err.message : 'Network request failed',
+      };
     }
   };
 
