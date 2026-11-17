@@ -21,9 +21,11 @@ function getCompanionUrl(): string {
   return (config.get<string>('companionUrl') || 'http://127.0.0.1:8787').replace(/\/+$/, '');
 }
 
+const DEFAULT_PWA_URL = 'https://antigravity-mobile-zeta.vercel.app';
+
 function getPwaUrl(): string {
   const config = vscode.workspace.getConfiguration('antigravityMobile');
-  return (config.get<string>('pwaUrl') || '').trim().replace(/\/+$/, '');
+  return (config.get<string>('pwaUrl') || DEFAULT_PWA_URL).trim().replace(/\/+$/, '');
 }
 
 function getAutoStartTunnel(): boolean {
@@ -39,8 +41,8 @@ function findCompanionScript(): string | null {
 
   const candidatePaths = [
     configured,
-    path.resolve(__dirname, '../../companion-service/src/server.mjs'),
     path.resolve(__dirname, '../companion-service/src/server.mjs'),
+    path.resolve(__dirname, '../../companion-service/src/server.mjs'),
     path.join(home, 'OneDrive', 'Desktop', 'antigravity-mobile', 'companion-service', 'src', 'server.mjs'),
     path.join(home, 'Desktop', 'antigravity-mobile', 'companion-service', 'src', 'server.mjs'),
     path.join(home, 'Projects', 'antigravity-mobile', 'companion-service', 'src', 'server.mjs'),
@@ -175,11 +177,12 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     try {
+      const dataDir = path.join(os.homedir(), '.antigravity-mobile', 'data');
       const proc = spawn('node', [serverScript], {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
-        env: { ...process.env, PORT: '8787' },
+        env: { ...process.env, PORT: '8787', ANTIGRAVITY_MOBILE_DATA_DIR: dataDir },
       });
       proc.unref();
 

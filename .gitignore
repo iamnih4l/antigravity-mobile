@@ -42,3 +42,4 @@ companion-service/data/agent-probe.json
 
 # IDE Extension build artifacts
 ide-extension/out/
+dist/

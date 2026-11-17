@@ -1,9 +1,27 @@
 {
   "name": "antigravity-mobile-bridge",
-  "displayName": "Antigravity Mobile Companion Bridge",
-  "description": "Official-compatible VS Code / Google Antigravity IDE companion extension streaming workspace, editor, diagnostics, terminal, and model discovery telemetry to the local Antigravity Mobile Companion Service.",
-  "version": "1.0.0",
+  "displayName": "Antigravity Mobile Remote",
+  "description": "Control your Antigravity IDE AI Chat Sidebar from your phone with Chat Auto-Crop, Agent Done chime/vibration alerts, Voice-to-Prompt, 1-tap IDE window switching, and zero-setup encrypted QR pairing.",
+  "version": "2.0.0",
   "publisher": "mohammed-nihal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/iamnih4l/antigravity-mobile.git"
+  },
+  "homepage": "https://antigravity-mobile-zeta.vercel.app",
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "antigravity",
+    "mobile",
+    "ai",
+    "remote",
+    "ide",
+    "qr",
+    "chat"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -23,7 +41,7 @@
       },
       {
         "command": "antigravityMobile.setPwaUrl",
-        "title": "Antigravity Mobile: Set Vercel Web App URL"
+        "title": "Antigravity Mobile: Set Custom Web App URL"
       },
       {
         "command": "antigravityMobile.restartTunnel",
@@ -48,8 +66,8 @@
         },
         "antigravityMobile.pwaUrl": {
           "type": "string",
-          "default": "",
-          "description": "Your deployed Vercel Web App URL (e.g. https://antigravity-mobile.vercel.app)"
+          "default": "https://antigravity-mobile-zeta.vercel.app",
+          "description": "Web App URL opened when scanning the QR code (defaults to the hosted stateless PWA; change if self-hosting)"
         },
         "antigravityMobile.autoStartTunnel": {
           "type": "boolean",
@@ -59,13 +77,15 @@
         "antigravityMobile.companionScriptPath": {
           "type": "string",
           "default": "",
-          "description": "Optional explicit path to companion-service/src/server.mjs"
+          "description": "Optional override path to companion-service/src/server.mjs"
         }
       }
     }
   },
   "dependencies": {
-    "@types/qrcode": "^1.5.6",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6"
   }
 }

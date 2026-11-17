@@ -1,5 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,17 +12,36 @@ import { TerminalManager } from './services/terminal.mjs';
 import { AcpAndModelManager } from './services/acp-bridge.mjs';
 import { DesktopController } from './services/desktop.mjs';
 import { CloudflareTunnelManager } from './services/tunnel.mjs';
-import { runEnvironmentDiscovery } from '../../scripts/discover-env.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+async function safeRunDiscovery() {
+  try {
+    const mod = await import('../../scripts/discover-env.mjs');
+    if (typeof mod.runEnvironmentDiscovery === 'function') {
+      return mod.runEnvironmentDiscovery();
+    }
+  } catch {
+    // Running standalone inside packaged VSIX extension without repo scripts/
+  }
+  return {
+    discoveredAt: new Date().toISOString(),
+    os: { platform: os.platform(), release: os.release(), arch: os.arch() },
+    runtimes: { node: process.version },
+    standaloneMode: true,
+  };
+}
+
 export async function createCompanionServer({
   port = Number(process.env.PORT || 8787),
-  dbPath = path.join(__dirname, '../data/antigravity-mobile.db'),
+  dbPath = process.env.ANTIGRAVITY_MOBILE_DATA_DIR
+    ? path.join(process.env.ANTIGRAVITY_MOBILE_DATA_DIR, 'antigravity-mobile.db')
+    : path.join(__dirname, '../data/antigravity-mobile.db'),
   authorizedRoots = [path.resolve(__dirname, '../..')],
   autoTunnel = process.env.DISABLE_AUTO_TUNNEL !== '1',
   persistWorkspaces = true,
 } = {}) {
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new SqliteStore(dbPath);
   const security = new SecurityManager(db, { authorizedRoots });
   const workspace = new WorkspaceManager(security, db, { persistWorkspaces });
@@ -250,7 +270,7 @@ export async function createCompanionServer({
       }
 
       if (pathname === '/api/discovery' && req.method === 'GET') {
-        return sendJson(res, 200, runEnvironmentDiscovery());
+        return sendJson(res, 200, await safeRunDiscovery());
       }
 
       if (pathname === '/api/models' && req.method === 'GET') {
