@@ -70,10 +70,23 @@ for n in range(1, 13):
 # Lightweight visual motion tracker for detecting when the AI agent is actively streaming vs finished
 _motion_state = {
     'prev_thumb': None,
+    'prev_crop': None,
     'working_since': None,
+    'active_frames': 0,
     'last_motion_at': 0.0,
+    'ignore_until': 0.0,
     'state': 'idle',  # 'idle' | 'working' | 'waiting'
 }
+
+
+def _reset_motion(cooldown_sec=2.5):
+    """Clears motion tracking after user input or viewport resize to prevent false alerts."""
+    _motion_state['prev_thumb'] = None
+    _motion_state['working_since'] = None
+    _motion_state['active_frames'] = 0
+    _motion_state['ignore_until'] = time.time() + cooldown_sec
+    if _motion_state['state'] != 'idle':
+        _motion_state['state'] = 'idle'
 
 
 def get_screen_size():
@@ -228,10 +241,23 @@ def type_text_via_paste(text, submit=False):
         press_combo('enter')
 
 
-def _update_agent_motion(cropped_img):
-    """Detects visual streaming motion inside the IDE/Chat viewport."""
+def _update_agent_motion(cropped_img, crop_key):
+    """Detects sustained AI streaming motion while ignoring cursor blinks, scrolls, and clicks."""
     now = time.time()
-    thumb = cropped_img.convert('L').resize((48, 48))
+
+    # Reset cleanly when the user switches view mode, resizes crop width, or switches windows
+    if _motion_state['prev_crop'] != crop_key:
+        _motion_state['prev_crop'] = crop_key
+        _reset_motion(cooldown_sec=2.0)
+        return _motion_state['state']
+
+    thumb = cropped_img.convert('L').resize((96, 96))
+
+    # During post-user-input cooldown, update baseline thumbnail without counting motion
+    if now < _motion_state['ignore_until']:
+        _motion_state['prev_thumb'] = thumb
+        return _motion_state['state']
+
     prev = _motion_state['prev_thumb']
     _motion_state['prev_thumb'] = thumb
 
@@ -240,29 +266,30 @@ def _update_agent_motion(cropped_img):
 
     diff = ImageChops.difference(thumb, prev)
     hist = diff.histogram()
-    # Count pixels that changed meaningfully (delta >= 12)
-    total_px = 48 * 48
-    changed_px = sum(hist[12:])
+    # Count only meaningful visual changes (pixel delta >= 22 ignores cursor blinks & subtle UI flicker)
+    total_px = 96 * 96
+    changed_px = sum(hist[22:])
     change_ratio = changed_px / float(total_px)
 
-    if change_ratio >= 0.008:
-        # Meaningful text/UI change detected
+    if change_ratio >= 0.025:
         _motion_state['last_motion_at'] = now
+        _motion_state['active_frames'] += 1
         if _motion_state['working_since'] is None:
             _motion_state['working_since'] = now
-        # Promote to 'working' once sustained >= 1.2s
-        if (now - _motion_state['working_since']) >= 1.2:
+        # Promote to 'working' ONLY after sustained multi-frame streaming (>= 5 frames & >= 4.0s)
+        if _motion_state['active_frames'] >= 5 and (now - _motion_state['working_since']) >= 4.0:
             _motion_state['state'] = 'working'
     else:
-        # No visual change on this frame
         since_motion = now - _motion_state['last_motion_at']
-        if _motion_state['state'] == 'working' and since_motion >= 3.0:
+        if _motion_state['state'] == 'working' and since_motion >= 3.5:
             _motion_state['state'] = 'waiting'
             _motion_state['working_since'] = None
-        elif _motion_state['state'] == 'waiting' and since_motion >= 12.0:
+            _motion_state['active_frames'] = 0
+        elif _motion_state['state'] == 'waiting' and since_motion >= 10.0:
             _motion_state['state'] = 'idle'
         elif _motion_state['state'] == 'idle' and since_motion >= 2.0:
             _motion_state['working_since'] = None
+            _motion_state['active_frames'] = 0
 
     return _motion_state['state']
 
@@ -293,7 +320,7 @@ def capture_jpeg(max_width=1280, quality=76, mode='chat_right', chat_pct=38):
     crop_w = crop_r - crop_l
     crop_h = crop_b - crop_t
 
-    agent_state = _update_agent_motion(img)
+    agent_state = _update_agent_motion(img, (mode, crop_l, crop_t, crop_r, crop_b))
 
     if max_width and crop_w > max_width:
         scale = max_width / float(crop_w)
@@ -345,18 +372,23 @@ def handle_request(req):
     if cmd == 'windows':
         return {'ok': True, 'windows': list_windows(), 'activeWindow': get_active_window_title()}
     if cmd == 'focus_window':
+        _reset_motion(cooldown_sec=2.5)
         title = focus_window(req['hwnd'])
         return {'ok': True, 'activeWindow': title}
     if cmd == 'click':
+        _reset_motion(cooldown_sec=2.5)
         move_and_click(req['x'], req['y'], button=req.get('button', 'left'), double=bool(req.get('double', False)))
         return {'ok': True, 'activeWindow': get_active_window_title()}
     if cmd == 'scroll':
+        _reset_motion(cooldown_sec=2.5)
         scroll_at(req.get('x'), req.get('y'), req.get('delta', -360))
         return {'ok': True}
     if cmd == 'shortcut':
+        _reset_motion(cooldown_sec=2.5)
         press_combo(req.get('shortcut') or req.get('key'))
         return {'ok': True, 'activeWindow': get_active_window_title()}
     if cmd == 'type_text':
+        _reset_motion(cooldown_sec=2.0)
         type_text_via_paste(req.get('text', ''), submit=bool(req.get('submit', False)))
         return {'ok': True, 'activeWindow': get_active_window_title()}
     return {'ok': False, 'error': f'Unknown desktop command: {cmd}'}
