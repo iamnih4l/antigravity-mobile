@@ -18,6 +18,7 @@ import {
   DesktopStatus,
   CompanionWsEvent,
   ModelParameterConfig,
+  DiscoveredProject,
 } from '@/lib/companion-client';
 import { BottomNav, MainView } from '@/components/BottomNav';
 import { CommandHeader } from '@/components/CommandHeader';
@@ -34,12 +35,14 @@ import { RemoteDesktopView } from '@/components/RemoteDesktopView';
 import { DiscoveryView } from '@/components/DiscoveryView';
 import { QrPairingModal } from '@/components/QrPairingModal';
 import { ConnectionSettingsModal } from '@/components/ConnectionSettingsModal';
+import { ProjectSwitcherModal } from '@/components/ProjectSwitcherModal';
 
 export default function Home() {
   const [activeView, setActiveView] = useState<MainView>('overview');
   const [isOnline, setIsOnline] = useState(false);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [workspaces, setWorkspaces] = useState<string[]>([]);
+  const [discoveredProjects, setDiscoveredProjects] = useState<DiscoveredProject[]>([]);
   const [activeWorkspace, setActiveWorkspace] = useState<string>('');
 
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -73,6 +76,7 @@ export default function Home() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
+  const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
   const [token, setToken] = useState<string | null>(null);
 
   const clientRef = useRef<AntigravityCompanionClient | null>(null);
@@ -215,6 +219,9 @@ export default function Home() {
         : [];
       const active = typeof res.activeWorkspace === 'string' ? res.activeWorkspace : stringWorkspaces[0] || '';
       setWorkspaces(stringWorkspaces.length > 0 ? stringWorkspaces : [active]);
+      if (Array.isArray(res.discoveredProjects)) {
+        setDiscoveredProjects(res.discoveredProjects);
+      }
       if (active) setActiveWorkspace(active);
     } catch {}
   };
@@ -499,6 +506,10 @@ export default function Home() {
           ideConnected={Boolean(health?.ideConnected)}
           activeWorkspace={activeWorkspace}
           onOpenConnectionModal={() => setIsConnectionModalOpen(true)}
+          onOpenProjectSwitcher={() => {
+            fetchWorkspaces();
+            setIsProjectSwitcherOpen(true);
+          }}
         />
 
         {/* ACTIVE VIEW CONTENT ROUTER */}
@@ -553,6 +564,10 @@ export default function Home() {
               onReadFile={(path) => getClient().readFile(path)}
               onWriteFile={handleWriteFile}
               onGetDiff={(path) => getClient().getFileDiff(path)}
+              onOpenProjectSwitcher={() => {
+                fetchWorkspaces();
+                setIsProjectSwitcherOpen(true);
+              }}
             />
           )}
 
@@ -645,6 +660,16 @@ export default function Home() {
         onSaveUrl={handleSaveCompanionUrl}
         isOnline={isOnline}
         onOpenQrModal={() => setIsQrModalOpen(true)}
+      />
+
+      {/* PROJECT / FOLDER SWITCHER MODAL */}
+      <ProjectSwitcherModal
+        isOpen={isProjectSwitcherOpen}
+        onClose={() => setIsProjectSwitcherOpen(false)}
+        activeWorkspace={activeWorkspace}
+        discoveredProjects={discoveredProjects}
+        onSelectWorkspace={handleSelectWorkspace}
+        onBrowseDirectory={(dir) => getClient().browseWorkspaces(dir)}
       />
     </div>
   );

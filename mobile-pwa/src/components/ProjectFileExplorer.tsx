@@ -27,6 +27,7 @@ interface ProjectFileExplorerProps {
   onReadFile: (path: string) => Promise<FileContent>;
   onWriteFile: (path: string, content: string, origin: 'agent' | 'manual') => Promise<void>;
   onGetDiff: (path: string) => Promise<FileDiff>;
+  onOpenProjectSwitcher?: () => void;
 }
 
 export function ProjectFileExplorer({
@@ -35,6 +36,7 @@ export function ProjectFileExplorer({
   onReadFile,
   onWriteFile,
   onGetDiff,
+  onOpenProjectSwitcher,
 }: ProjectFileExplorerProps) {
   const [currentDir, setCurrentDir] = useState<string>('.');
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -63,6 +65,8 @@ export function ProjectFileExplorer({
   };
 
   useEffect(() => {
+    setSelectedFile(null);
+    setDiffView(null);
     loadDirectory('.');
   }, [activeWorkspace]);
 
@@ -126,18 +130,22 @@ export function ProjectFileExplorer({
     }
   };
 
-  const currentFolderParts = currentDir.split(/[/\\]/).filter(Boolean);
+  const currentFolderParts = currentDir === '.' ? [] : currentDir.split(/[/\\]/).filter((p) => p && p !== '.');
+  const projectDisplayName = typeof activeWorkspace === 'string' && activeWorkspace
+    ? activeWorkspace.split(/[/\\]/).filter(Boolean).pop() || 'Project'
+    : 'Project';
 
   return (
     <div className="p-3.5 sm:p-5 space-y-4 max-w-5xl mx-auto">
       {/* HEADER & BREADCRUMBS */}
       <div className="hairline-card rounded-xl p-3.5 border border-hairline bg-surface/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
           <button
             onClick={() => loadDirectory('.')}
-            className="text-xs font-mono text-zinc-400 hover:text-white px-2 py-1 rounded bg-obsidian border border-hairline shrink-0"
+            className="text-xs font-mono text-indigo-300 hover:text-white px-2 py-1 rounded bg-obsidian border border-indigo-500/30 shrink-0 flex items-center gap-1.5"
           >
-            root
+            <FolderOpen className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{projectDisplayName}</span>
           </button>
           {currentFolderParts.map((part, idx) => (
             <React.Fragment key={idx}>
@@ -147,7 +155,7 @@ export function ProjectFileExplorer({
                   const target = currentFolderParts.slice(0, idx + 1).join('/');
                   loadDirectory(target);
                 }}
-                className="text-xs font-mono text-indigo-300 hover:underline px-1 shrink-0"
+                className="text-xs font-mono text-zinc-300 hover:text-white hover:underline px-1 shrink-0"
               >
                 {part}
               </button>
@@ -155,7 +163,16 @@ export function ProjectFileExplorer({
           ))}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {onOpenProjectSwitcher && (
+            <button
+              onClick={onOpenProjectSwitcher}
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-xs font-medium text-indigo-200 flex items-center gap-1.5 active:scale-95"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Switch Project</span>
+            </button>
+          )}
           <button
             onClick={() => setShowNewFileModal(true)}
             className="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surfaceHover border border-hairline text-xs font-mono text-zinc-200 flex items-center gap-1.5 active:scale-95"

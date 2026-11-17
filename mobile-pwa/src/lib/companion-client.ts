@@ -182,6 +182,32 @@ export interface ApprovalItem {
   resolutionNote?: string;
 }
 
+export interface DiscoveredProject {
+  path: string;
+  name: string;
+  parentName?: string;
+  isGitRepo: boolean;
+  marker?: string;
+  active?: boolean;
+}
+
+export interface BrowseDirectoryEntry {
+  name: string;
+  path: string;
+  isGitRepo: boolean;
+  marker: string;
+  isProject: boolean;
+  active: boolean;
+}
+
+export interface BrowseDirectoryResponse {
+  currentDir: string;
+  parentDir: string | null;
+  homeDir: string;
+  quickRoots: Array<{ label: string; path: string }>;
+  directories: BrowseDirectoryEntry[];
+}
+
 export interface DesktopStatus {
   supported: boolean;
   mode: string;
@@ -441,7 +467,12 @@ export class AntigravityCompanionClient {
     return `${this.baseUrl}/api/activity?${params.toString()}`;
   }
 
-  async getWorkspaces(): Promise<{ activeWorkspace: string; workspaces: string[] }> {
+  async getWorkspaces(): Promise<{
+    activeWorkspace: string;
+    workspaces: string[];
+    discoveredProjects: DiscoveredProject[];
+    homeDir?: string;
+  }> {
     const data = await this.request<any>('/api/workspaces');
     const rawList = Array.isArray(data.workspaces) ? data.workspaces : [];
     const workspaces: string[] = rawList.map((w: any) => {
@@ -454,10 +485,21 @@ export class AntigravityCompanionClient {
       ? data.activeWorkspace
       : data.activeWorkspace?.path || workspaces[0] || '';
 
+    const discoveredProjects: DiscoveredProject[] = Array.isArray(data.discoveredProjects)
+      ? data.discoveredProjects
+      : [];
+
     return {
       activeWorkspace,
       workspaces: workspaces.length > 0 ? workspaces : (activeWorkspace ? [activeWorkspace] : []),
+      discoveredProjects,
+      homeDir: data.homeDir,
     };
+  }
+
+  async browseWorkspaces(dir?: string): Promise<BrowseDirectoryResponse> {
+    const q = dir ? `?dir=${encodeURIComponent(dir)}` : '';
+    return this.request<BrowseDirectoryResponse>(`/api/workspaces/browse${q}`);
   }
 
   async selectWorkspace(workspace: string): Promise<{ activeWorkspace: string }> {

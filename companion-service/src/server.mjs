@@ -222,12 +222,20 @@ export async function createCompanionServer({
         return sendJson(res, 200, {
           activeWorkspace: workspace.activeWorkspace,
           workspaces: workspace.listWorkspaces(),
+          discoveredProjects: workspace.discoverProjects(),
+          homeDir: workspace.homeDir,
         });
       }
 
-      if (pathname === '/api/workspaces/select' && req.method === 'POST') {
+      if (pathname === '/api/workspaces/browse' && req.method === 'GET') {
+        const targetDir = url.searchParams.get('dir') || '';
+        const browseRes = await workspace.browseDirectory(targetDir);
+        return sendJson(res, 200, browseRes);
+      }
+
+      if ((pathname === '/api/workspaces/select' || pathname === '/api/workspaces/open') && req.method === 'POST') {
         const body = await readBody(req);
-        const resSwitch = await workspace.switchWorkspace(body.workspace);
+        const resSwitch = await workspace.openWorkspace(body.workspace || body.path);
         broadcast({ type: 'workspace_selected', ...resSwitch });
         return sendJson(res, 200, resSwitch);
       }

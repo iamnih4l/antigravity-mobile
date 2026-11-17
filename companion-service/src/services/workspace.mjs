@@ -1,14 +1,234 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 
+const PROJECT_MARKERS = [
+  '.git',
+  'package.json',
+  'pyproject.toml',
+  'requirements.txt',
+  'Cargo.toml',
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'pubspec.yaml',
+  'Makefile',
+  'docker-compose.yml',
+];
+
+const IGNORED_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.next',
+  '.cache',
+  'AppData',
+  'Application Data',
+  'Local Settings',
+  'Cookies',
+  'NetHood',
+  'PrintHood',
+  'Recent',
+  'SendTo',
+  'Start Menu',
+  'Templates',
+  '__pycache__',
+  '.venv',
+  'venv',
+]);
+
 export class WorkspaceManager {
-  constructor(security, db) {
+  constructor(security, db, options = {}) {
     this.security = security;
     this.db = db;
+    this.homeDir = path.resolve(os.homedir());
+    this.storePath = options.storePath || path.resolve(path.dirname(db.dbPath), 'workspaces.json');
     this.activeWorkspace = Array.from(this.security.authorizedRoots)[0];
     this.fileOriginLedger = new Map(); // filePath -> { origin: 'agent' | 'manual', agentId, timestamp }
+    this._loadPersistedWorkspaces();
+  }
+
+  _loadPersistedWorkspaces() {
+    try {
+      if (fsSync.existsSync(this.storePath)) {
+        const raw = JSON.parse(fsSync.readFileSync(this.storePath, 'utf8'));
+        if (Array.isArray(raw.workspaces)) {
+          for (const ws of raw.workspaces) {
+            if (typeof ws === 'string' && fsSync.existsSync(ws)) {
+              this.security.addAuthorizedWorkspace(ws);
+            }
+          }
+        }
+        if (typeof raw.activeWorkspace === 'string' && fsSync.existsSync(raw.activeWorkspace)) {
+          this.security.addAuthorizedWorkspace(raw.activeWorkspace);
+          this.activeWorkspace = path.resolve(raw.activeWorkspace);
+        }
+      }
+    } catch {
+      // Ignore corrupt workspace cache
+    }
+  }
+
+  _persistWorkspaces() {
+    try {
+      const payload = {
+        activeWorkspace: this.activeWorkspace,
+        workspaces: Array.from(this.security.authorizedRoots),
+        updatedAt: new Date().toISOString(),
+      };
+      fsSync.writeFileSync(this.storePath, JSON.stringify(payload, null, 2), 'utf8');
+    } catch {
+      // Ignore write failures
+    }
+  }
+
+  _isWithinUserHomeOrAuthorized(targetPath) {
+    const resolved = path.resolve(targetPath);
+    const normResolved = process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+    const normHome = process.platform === 'win32' ? this.homeDir.toLowerCase() : this.homeDir;
+    if (normResolved === normHome || normResolved.startsWith(normHome + path.sep)) {
+      return true;
+    }
+    for (const root of this.security.authorizedRoots) {
+      const normRoot = process.platform === 'win32' ? root.toLowerCase() : root;
+      if (normResolved === normRoot || normResolved.startsWith(normRoot + path.sep)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _detectProjectType(dirPath) {
+    for (const marker of PROJECT_MARKERS) {
+      if (fsSync.existsSync(path.join(dirPath, marker))) {
+        return marker;
+      }
+    }
+    return null;
+  }
+
+  discoverProjects() {
+    const candidateParents = [
+      path.dirname(this.activeWorkspace),
+      path.join(this.homeDir, 'OneDrive', 'Desktop'),
+      path.join(this.homeDir, 'Desktop'),
+      path.join(this.homeDir, 'Projects'),
+      path.join(this.homeDir, 'projects'),
+      path.join(this.homeDir, 'dev'),
+      path.join(this.homeDir, 'code'),
+      path.join(this.homeDir, 'repos'),
+      path.join(this.homeDir, 'Documents'),
+    ];
+
+    const seen = new Set();
+    const discovered = [];
+
+    for (const parent of candidateParents) {
+      const resolvedParent = path.resolve(parent);
+      const key = process.platform === 'win32' ? resolvedParent.toLowerCase() : resolvedParent;
+      if (seen.has(key) || !fsSync.existsSync(resolvedParent)) continue;
+      seen.add(key);
+
+      try {
+        const entries = fsSync.readdirSync(resolvedParent, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
+
+          const fullPath = path.join(resolvedParent, entry.name);
+          const itemKey = process.platform === 'win32' ? fullPath.toLowerCase() : fullPath;
+          if (seen.has(itemKey)) continue;
+
+          const marker = this._detectProjectType(fullPath);
+          const isGitRepo = fsSync.existsSync(path.join(fullPath, '.git'));
+          // Include directories on Desktop/Projects/sibling folders or any directory with a project marker
+          const isDevParent =
+            resolvedParent.toLowerCase().endsWith('desktop') ||
+            resolvedParent.toLowerCase().endsWith('projects') ||
+            resolvedParent.toLowerCase().endsWith('dev') ||
+            resolvedParent.toLowerCase().endsWith('code') ||
+            resolvedParent.toLowerCase().endsWith('repos') ||
+            resolvedParent === path.dirname(this.activeWorkspace);
+
+          if (marker || isGitRepo || isDevParent) {
+            seen.add(itemKey);
+            discovered.push({
+              path: fullPath,
+              name: entry.name,
+              parentName: path.basename(resolvedParent),
+              isGitRepo,
+              marker: marker || 'folder',
+              active: path.resolve(fullPath) === path.resolve(this.activeWorkspace),
+            });
+          }
+        }
+      } catch {
+        // Ignore unreadable system dirs
+      }
+    }
+
+    // Sort: active first, then git repos, then project markers, then alphabetical
+    discovered.sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      if (a.isGitRepo !== b.isGitRepo) return a.isGitRepo ? -1 : 1;
+      if ((a.marker !== 'folder') !== (b.marker !== 'folder')) return a.marker !== 'folder' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return discovered.slice(0, 60);
+  }
+
+  async browseDirectory(targetDir) {
+    const requested = targetDir ? path.resolve(targetDir) : path.dirname(this.activeWorkspace) || this.homeDir;
+    if (!this._isWithinUserHomeOrAuthorized(requested)) {
+      throw new Error(`Browsing restricted to user home directory (${this.homeDir}).`);
+    }
+    if (!fsSync.existsSync(requested)) {
+      throw new Error(`Directory does not exist: ${requested}`);
+    }
+
+    const entries = await fs.readdir(requested, { withFileTypes: true });
+    const directories = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
+      const fullPath = path.join(requested, entry.name);
+      const isGitRepo = fsSync.existsSync(path.join(fullPath, '.git'));
+      const marker = this._detectProjectType(fullPath);
+      directories.push({
+        name: entry.name,
+        path: fullPath,
+        isGitRepo,
+        marker: marker || 'folder',
+        isProject: Boolean(isGitRepo || marker),
+        active: path.resolve(fullPath) === path.resolve(this.activeWorkspace),
+      });
+    }
+
+    directories.sort((a, b) => {
+      if (a.isProject !== b.isProject) return a.isProject ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const parentCandidate = path.dirname(requested);
+    const canGoUp = parentCandidate !== requested && this._isWithinUserHomeOrAuthorized(parentCandidate);
+
+    const quickRoots = [
+      { label: 'Home', path: this.homeDir },
+      { label: 'OneDrive Desktop', path: path.join(this.homeDir, 'OneDrive', 'Desktop') },
+      { label: 'Desktop', path: path.join(this.homeDir, 'Desktop') },
+      { label: 'Documents', path: path.join(this.homeDir, 'Documents') },
+      { label: 'Projects', path: path.join(this.homeDir, 'Projects') },
+    ].filter((r) => fsSync.existsSync(r.path));
+
+    return {
+      currentDir: requested,
+      parentDir: canGoUp ? parentCandidate : null,
+      homeDir: this.homeDir,
+      quickRoots,
+      directories,
+    };
   }
 
   listWorkspaces() {
@@ -22,20 +242,39 @@ export class WorkspaceManager {
     }));
   }
 
-  async switchWorkspace(targetPath) {
-    const resolved = this.security.authorizeWorkspacePath(targetPath);
-    if (!fsSync.existsSync(resolved)) {
+  async openWorkspace(targetPath) {
+    if (!targetPath || typeof targetPath !== 'string') {
+      throw new Error('Workspace path is required');
+    }
+    const resolved = path.resolve(targetPath);
+    if (!this._isWithinUserHomeOrAuthorized(resolved)) {
+      throw new Error(`Access denied: workspace must be inside ${this.homeDir}`);
+    }
+    if (!fsSync.existsSync(resolved) || !fsSync.statSync(resolved).isDirectory()) {
       throw new Error(`Workspace directory does not exist: ${resolved}`);
     }
+
+    this.security.addAuthorizedWorkspace(resolved);
     this.activeWorkspace = resolved;
+    this._persistWorkspaces();
+
     await this.db.recordEvent({
       project: path.basename(resolved),
       category: 'workspace',
-      description: `Switched active workspace to ${path.basename(resolved)}`,
+      description: `Opened project workspace "${path.basename(resolved)}" (${resolved})`,
       status: 'completed',
       details: { path: resolved },
     });
-    return { activeWorkspace: resolved, name: path.basename(resolved) };
+
+    return {
+      activeWorkspace: resolved,
+      name: path.basename(resolved),
+      workspaces: this.listWorkspaces(),
+    };
+  }
+
+  async switchWorkspace(targetPath) {
+    return this.openWorkspace(targetPath);
   }
 
   async listDirectory(relOrAbsPath = '.') {

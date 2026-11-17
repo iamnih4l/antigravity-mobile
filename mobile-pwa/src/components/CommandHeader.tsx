@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, ShieldAlert, Wifi, WifiOff, Globe, Settings2 } from 'lucide-react';
+import { Sparkles, ShieldAlert, Wifi, WifiOff, Globe, Settings2, FolderOpen, ChevronDown } from 'lucide-react';
 import { MainView } from './BottomNav';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,7 @@ interface CommandHeaderProps {
   hostname?: string;
   activeWorkspace: string;
   onOpenConnectionModal?: () => void;
+  onOpenProjectSwitcher?: () => void;
 }
 
 const VIEW_TITLES: Record<MainView, { title: string; subtitle: string }> = {
@@ -70,13 +71,16 @@ export function CommandHeader({
   hostname,
   activeWorkspace,
   onOpenConnectionModal,
+  onOpenProjectSwitcher,
 }: CommandHeaderProps) {
   const currentMeta = VIEW_TITLES[activeView] || {
     title: 'Antigravity Mobile',
     subtitle: 'Remote Developer Companion',
   };
 
-  const wsName = activeWorkspace ? activeWorkspace.split(/[/\\]/).filter(Boolean).pop() || activeWorkspace : 'Workspace';
+  const wsName = typeof activeWorkspace === 'string' && activeWorkspace
+    ? activeWorkspace.split(/[/\\]/).filter(Boolean).pop() || activeWorkspace
+    : 'Workspace';
 
   return (
     <header className="sticky top-0 z-30 glass-panel border-b border-hairline px-3.5 py-2.5">
@@ -95,7 +99,7 @@ export function CommandHeader({
                 type="button"
                 onClick={onOpenConnectionModal}
                 className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border transition active:scale-95 cursor-pointer',
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border transition active:scale-95 cursor-pointer shrink-0',
                   isOnline
                     ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                     : 'bg-rose-500/10 text-rose-300 border-rose-500/30 hover:bg-rose-500/20'
@@ -108,12 +112,24 @@ export function CommandHeader({
                     isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
                   )}
                 />
-                {isOnline ? (ideConnected ? 'IDE + ACP Linked' : 'Daemon Online') : 'Configure Host'}
+                {isOnline ? (ideConnected ? 'IDE Linked' : 'Online') : 'Offline'}
               </button>
             </div>
-            <p className="text-[11px] text-zinc-400 truncate">
-              {wsName} • {hostname || '127.0.0.1:8787'}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <button
+                type="button"
+                onClick={onOpenProjectSwitcher}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 -ml-1.5 rounded-md text-[11px] font-mono text-indigo-300 hover:bg-indigo-500/15 hover:text-white transition active:scale-95 max-w-[190px] sm:max-w-[260px]"
+                title="Tap to switch or open another project folder"
+              >
+                <FolderOpen className="w-3 h-3 text-indigo-400 shrink-0" />
+                <span className="truncate">{wsName}</span>
+                <ChevronDown className="w-3 h-3 text-indigo-400 shrink-0" />
+              </button>
+              <span className="text-[10px] text-zinc-500 hidden sm:inline truncate">
+                • {hostname || '127.0.0.1:8787'}
+              </span>
+            </div>
           </div>
         </div>
 
