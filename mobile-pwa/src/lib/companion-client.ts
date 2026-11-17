@@ -336,7 +336,13 @@ export class AntigravityCompanionClient {
   }
 
   async getModels(): Promise<ModelsResponse> {
-    return this.request<ModelsResponse>('/api/models');
+    const data = await this.request<any>('/api/models');
+    return {
+      models: Array.isArray(data.models) ? data.models : [],
+      currentModel: data.selectedModelId || data.currentModel || 'gemini-2.5-pro-antigravity',
+      source: data.source || 'acp_registry',
+      parameters: data.modelConfig || data.parameters,
+    };
   }
 
   async selectModel(modelId: string, parameters?: ModelParameterConfig, scope = 'acp_session'): Promise<{ selectedModelId: string; parameters?: ModelParameterConfig; scope: string }> {
@@ -347,7 +353,21 @@ export class AntigravityCompanionClient {
   }
 
   async getAgents(): Promise<AgentsResponse> {
-    return this.request<AgentsResponse>('/api/agents');
+    const data = await this.request<any>('/api/agents');
+    const rawAgents = Array.isArray(data.agents) ? data.agents : [];
+    const agents: AgentInfo[] = rawAgents.map((a: any) => ({
+      id: a.id || 'unknown',
+      name: a.name || a.id || 'Agent',
+      type: a.type || (a.origin === 'external_cli' ? 'cli' : a.origin || 'acp'),
+      classification: a.classification || a.originLabel || 'ACP Agent',
+      description: a.description || '',
+      capabilities: Array.isArray(a.capabilities) ? a.capabilities : [],
+      active: typeof a.active === 'boolean' ? a.active : a.status === 'ready' || Boolean(a.isSelected),
+    }));
+    return {
+      agents,
+      activeAgent: data.selectedAgentId || data.activeAgent || 'acp-antigravity-coder',
+    };
   }
 
   async selectAgent(agentId: string): Promise<{ activeAgent: string }> {
@@ -359,7 +379,19 @@ export class AntigravityCompanionClient {
 
   async listTasks(project?: string): Promise<{ tasks: TaskItem[] }> {
     const q = project ? `?project=${encodeURIComponent(project)}` : '';
-    return this.request<{ tasks: TaskItem[] }>(`/api/tasks${q}`);
+    const data = await this.request<any>(`/api/tasks${q}`);
+    const rawTasks = Array.isArray(data.tasks) ? data.tasks : [];
+    const tasks: TaskItem[] = rawTasks.map((t: any) => ({
+      ...t,
+      trace: Array.isArray(t.trace)
+        ? t.trace.map((s: any) => ({
+            step: typeof s.step === 'string' ? s.step : `${s.event || 'Step'}${s.detail ? ': ' + s.detail : ''}`,
+            timestamp: s.timestamp || t.createdAt || new Date().toISOString(),
+            details: s.details || (s.detail ? { detail: s.detail } : undefined),
+          }))
+        : [],
+    }));
+    return { tasks };
   }
 
   async createTask(params: {
@@ -410,7 +442,22 @@ export class AntigravityCompanionClient {
   }
 
   async getWorkspaces(): Promise<{ activeWorkspace: string; workspaces: string[] }> {
-    return this.request('/api/workspaces');
+    const data = await this.request<any>('/api/workspaces');
+    const rawList = Array.isArray(data.workspaces) ? data.workspaces : [];
+    const workspaces: string[] = rawList.map((w: any) => {
+      if (typeof w === 'string') return w;
+      if (w && typeof w === 'object') return w.path || w.name || String(w);
+      return String(w || '');
+    }).filter(Boolean);
+
+    const activeWorkspace = typeof data.activeWorkspace === 'string'
+      ? data.activeWorkspace
+      : data.activeWorkspace?.path || workspaces[0] || '';
+
+    return {
+      activeWorkspace,
+      workspaces: workspaces.length > 0 ? workspaces : (activeWorkspace ? [activeWorkspace] : []),
+    };
   }
 
   async selectWorkspace(workspace: string): Promise<{ activeWorkspace: string }> {
@@ -421,7 +468,21 @@ export class AntigravityCompanionClient {
   }
 
   async listFiles(dir = '.'): Promise<{ directory: string; files: FileEntry[] }> {
-    return this.request(`/api/files?dir=${encodeURIComponent(dir)}`);
+    const data = await this.request<any>(`/api/files?dir=${encodeURIComponent(dir)}`);
+    const rawList = Array.isArray(data.items) ? data.items : Array.isArray(data.files) ? data.files : [];
+    const files: FileEntry[] = rawList.map((item: any) => ({
+      name: item.name || '',
+      path: item.path || '',
+      isDirectory: item.type === 'directory' || item.isDirectory === true,
+      size: typeof item.size === 'number' ? item.size : 0,
+      modifiedAt: item.modifiedAt || new Date().toISOString(),
+      origin: item.lastModifiedOrigin || item.origin || 'manual',
+      agentId: item.lastModifiedByAgent || item.agentId || null,
+    }));
+    return {
+      directory: data.directory || dir,
+      files,
+    };
   }
 
   async readFile(file: string): Promise<FileContent> {
@@ -496,7 +557,16 @@ export class AntigravityCompanionClient {
   }
 
   async getDesktopStatus(): Promise<DesktopStatus> {
-    return this.request<DesktopStatus>('/api/desktop');
+    const data = await this.request<any>('/api/desktop');
+    const width = data.resolution?.width || data.screenResolution?.width || 1440;
+    const height = data.resolution?.height || data.screenResolution?.height || 900;
+    return {
+      supported: typeof data.supported === 'boolean' ? data.supported : Boolean(data.available),
+      mode: data.mode || data.transport || 'Virtual Framebuffer Bridge',
+      tools: data.tools || {},
+      screenResolution: { width, height },
+      activeWindow: data.activeWindow || 'Google Antigravity IDE',
+    };
   }
 
   async sendDesktopInput(payload: Record<string, unknown>): Promise<Record<string, unknown>> {

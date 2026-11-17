@@ -75,8 +75,9 @@ export function GitManager({
     }
   };
 
-  const stagedFiles = status.changedFiles.filter((f) => f.staged);
-  const unstagedFiles = status.changedFiles.filter((f) => !f.staged);
+  const changedFiles = Array.isArray(status?.changedFiles) ? status.changedFiles : [];
+  const stagedFiles = changedFiles.filter((f) => f?.staged);
+  const unstagedFiles = changedFiles.filter((f) => !f?.staged);
 
   return (
     <div className="p-3.5 sm:p-5 space-y-4 max-w-4xl mx-auto">

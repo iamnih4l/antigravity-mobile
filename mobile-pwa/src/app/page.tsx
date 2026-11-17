@@ -122,7 +122,7 @@ export default function Home() {
         return 'http://127.0.0.1:8787';
       }
     }
-    return process.env.NEXT_PUBLIC_COMPANION_URL || 'https://nihals-pc.tail4382b3.ts.net';
+    return process.env.NEXT_PUBLIC_COMPANION_URL || 'http://127.0.0.1:8787';
   };
 
   const handleSaveCompanionUrl = async (rawUrl: string): Promise<{ ok: boolean; message?: string }> => {
@@ -210,15 +210,19 @@ export default function Home() {
   const fetchWorkspaces = async () => {
     try {
       const res = await getClient().getWorkspaces();
-      setWorkspaces(res.workspaces || [res.activeWorkspace]);
-      setActiveWorkspace(res.activeWorkspace);
+      const stringWorkspaces = Array.isArray(res.workspaces)
+        ? res.workspaces.map((w: any) => (typeof w === 'string' ? w : w?.path || w?.name || String(w))).filter(Boolean)
+        : [];
+      const active = typeof res.activeWorkspace === 'string' ? res.activeWorkspace : stringWorkspaces[0] || '';
+      setWorkspaces(stringWorkspaces.length > 0 ? stringWorkspaces : [active]);
+      if (active) setActiveWorkspace(active);
     } catch {}
   };
 
   const fetchModels = async () => {
     try {
       const res = await getClient().getModels();
-      setModels(res.models);
+      setModels(Array.isArray(res.models) ? res.models : []);
       if (res.currentModel) setCurrentModel(res.currentModel);
     } catch {}
   };
@@ -226,7 +230,7 @@ export default function Home() {
   const fetchAgents = async () => {
     try {
       const res = await getClient().getAgents();
-      setAgents(res.agents);
+      setAgents(Array.isArray(res.agents) ? res.agents : []);
       if (res.activeAgent) setActiveAgent(res.activeAgent);
     } catch {}
   };
@@ -234,37 +238,47 @@ export default function Home() {
   const fetchTasks = async () => {
     try {
       const res = await getClient().listTasks();
-      setTasks(res.tasks);
+      setTasks(Array.isArray(res.tasks) ? res.tasks : []);
     } catch {}
   };
 
   const fetchActivity = async () => {
     try {
       const res = await getClient().getActivity({ limit: 100 });
-      setActivityEvents(res.events);
+      setActivityEvents(Array.isArray(res.events) ? res.events : []);
     } catch {}
   };
 
   const fetchApprovals = async () => {
     try {
       const res = await getClient().listApprovals();
-      setApprovals(res.approvals);
+      setApprovals(Array.isArray(res.approvals) ? res.approvals : []);
     } catch {}
   };
 
   const fetchGitStatus = async () => {
     try {
       const res = await getClient().getGitStatus();
-      setGitStatus(res.status);
-      setGitCommits(res.commits);
+      if (res.status) {
+        setGitStatus({
+          isRepo: Boolean(res.status.isRepo),
+          workspace: res.status.workspace || '',
+          branch: res.status.branch || 'main',
+          branches: Array.isArray(res.status.branches) ? res.status.branches : ['main'],
+          changedFiles: Array.isArray(res.status.changedFiles) ? res.status.changedFiles : [],
+          hasConflicts: Boolean(res.status.hasConflicts),
+        });
+      }
+      setGitCommits(Array.isArray(res.commits) ? res.commits : []);
     } catch {}
   };
 
   const fetchFiles = async (dir = '.') => {
     try {
       const res = await getClient().listFiles(dir);
-      setRecentFiles(res.files);
-      return res;
+      const safeFiles = Array.isArray(res.files) ? res.files : [];
+      setRecentFiles(safeFiles);
+      return { directory: res.directory || dir, files: safeFiles };
     } catch {
       return { directory: dir, files: [] };
     }

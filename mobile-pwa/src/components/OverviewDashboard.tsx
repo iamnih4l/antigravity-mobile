@@ -81,7 +81,12 @@ export function OverviewDashboard({
     }
   };
 
-  const wsName = activeWorkspace ? activeWorkspace.split(/[/\\]/).filter(Boolean).pop() || activeWorkspace : 'antigravity-mobile';
+  const wsName = typeof activeWorkspace === 'string' && activeWorkspace
+    ? activeWorkspace.split(/[/\\]/).filter(Boolean).pop() || activeWorkspace
+    : 'antigravity-mobile';
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const safeFiles = Array.isArray(recentFiles) ? recentFiles : [];
+  const safeApprovals = Array.isArray(pendingApprovals) ? pendingApprovals : [];
 
   return (
     <div className="p-3.5 sm:p-5 space-y-4 max-w-5xl mx-auto">
@@ -279,18 +284,19 @@ export function OverviewDashboard({
             onClick={() => onSelectView('activity')}
             className="text-xs text-indigo-400 hover:underline font-medium"
           >
-            All Activity ({tasks.length}) →
+            All Activity ({safeTasks.length}) →
           </button>
         </div>
 
-        {tasks.length === 0 ? (
+        {safeTasks.length === 0 ? (
           <div className="py-6 text-center text-xs text-zinc-500 font-mono border border-dashed border-hairline rounded-lg">
             No active agent tasks running. Click "Run" or "New Task" to launch an autonomous task.
           </div>
         ) : (
           <div className="space-y-2">
-            {tasks.slice(0, 4).map((task) => {
+            {safeTasks.slice(0, 4).map((task) => {
               const isExpanded = expandedTaskId === task.id;
+              const safeTrace = Array.isArray(task.trace) ? task.trace : [];
               return (
                 <div
                   key={task.id}
@@ -314,7 +320,7 @@ export function OverviewDashboard({
                           {task.status}
                         </span>
                         <span className="text-[10px] font-mono text-zinc-400">{task.agentId}</span>
-                        <span className="text-[10px] font-mono text-zinc-500">• {new Date(task.createdAt).toLocaleTimeString()}</span>
+                        <span className="text-[10px] font-mono text-zinc-500">• {task.createdAt ? new Date(task.createdAt).toLocaleTimeString() : ''}</span>
                       </div>
                       <p className="text-xs text-zinc-200 mt-1 line-clamp-2">{task.prompt}</p>
                     </div>
@@ -322,7 +328,7 @@ export function OverviewDashboard({
                       onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
                       className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-surface text-xs font-mono shrink-0"
                     >
-                      {isExpanded ? 'Hide Trace' : `Trace (${task.trace.length})`}
+                      {isExpanded ? 'Hide Trace' : `Trace (${safeTrace.length})`}
                     </button>
                   </div>
 
@@ -330,13 +336,13 @@ export function OverviewDashboard({
                   {isExpanded && (
                     <div className="mt-3 pt-2.5 border-t border-hairline space-y-1.5 text-[11px] font-mono">
                       <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Execution Steps</div>
-                      {task.trace.map((step, idx) => (
+                      {safeTrace.map((step, idx) => (
                         <div key={idx} className="flex items-start gap-2 text-zinc-300">
                           <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1 shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <span>{step.step}</span>
+                            <span>{String(step.step ?? '')}</span>
                             <span className="text-zinc-500 text-[10px] ml-2">
-                              {new Date(step.timestamp).toLocaleTimeString()}
+                              {step.timestamp ? new Date(step.timestamp).toLocaleTimeString() : ''}
                             </span>
                           </div>
                         </div>
@@ -367,13 +373,13 @@ export function OverviewDashboard({
           </button>
         </div>
 
-        {recentFiles.length === 0 ? (
+        {safeFiles.length === 0 ? (
           <div className="py-6 text-center text-xs text-zinc-500 font-mono border border-dashed border-hairline rounded-lg">
             No recently changed files recorded.
           </div>
         ) : (
           <div className="space-y-1.5">
-            {recentFiles.slice(0, 5).map((file) => (
+            {safeFiles.slice(0, 5).map((file) => (
               <div
                 key={file.path}
                 className="p-2 rounded-lg bg-obsidian/60 border border-hairline flex items-center justify-between gap-2 hover:border-zinc-700 transition"

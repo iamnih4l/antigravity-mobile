@@ -32,8 +32,10 @@ export function RemoteDesktopView({
   const handleCanvasClick = async (e: React.MouseEvent<HTMLDivElement>) => {
     if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * (status?.screenResolution.width || 1920));
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * (status?.screenResolution.height || 1080));
+    const resW = status?.screenResolution?.width || 1920;
+    const resH = status?.screenResolution?.height || 1080;
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * resW);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * resH);
 
     setClickIndicator({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     setTimeout(() => setClickIndicator(null), 800);

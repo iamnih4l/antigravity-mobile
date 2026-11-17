@@ -108,11 +108,15 @@ export function BottomNav({
             onChange={(e) => onSelectWorkspace(e.target.value)}
             className="w-full bg-surface text-xs text-zinc-200 font-mono rounded-md px-2.5 py-1.5 border border-hairline focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
-            {workspaces.map((ws) => (
-              <option key={ws} value={ws}>
-                {ws.split(/[/\\]/).filter(Boolean).pop() || ws}
-              </option>
-            ))}
+            {(workspaces || []).map((ws: any) => {
+              const wsStr = typeof ws === 'string' ? ws : ws?.path || ws?.name || String(ws || '');
+              const wsLabel = wsStr.split(/[/\\]/).filter(Boolean).pop() || wsStr || 'Workspace';
+              return (
+                <option key={wsStr} value={wsStr}>
+                  {wsLabel}
+                </option>
+              );
+            })}
           </select>
         </div>
 

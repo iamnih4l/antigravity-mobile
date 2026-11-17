@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 export const metadata: Metadata = {
   title: 'Antigravity Mobile — Remote Control Centre for Google Antigravity IDE',
@@ -35,7 +36,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-obsidian text-zinc-100 selection:bg-indigo-500/30 selection:text-indigo-200">
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>
   );
