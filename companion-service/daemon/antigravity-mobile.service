@@ -1,0 +1,16 @@
+[Unit]
+Description=Antigravity Mobile Local Companion Service (Always-Ready Mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/antigravity-mobile/companion-service
+ExecStart=/usr/bin/env node src/server.mjs
+Restart=always
+RestartSec=3
+Environment=NODE_ENV=production
+Environment=ANTIGRAVITY_AUTO_LAUNCH_IDE=true
+
+[Install]
+WantedBy=default.target

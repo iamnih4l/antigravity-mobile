@@ -1,0 +1,2920 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Antigravity Mobile — Remote Control Centre for Google Antigravity IDE</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            display: ['Space Grotesk', 'Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            obsidian: '#09090B',
+            carbon: '#0E1015',
+            surface: '#13161F',
+            surfaceHover: '#1A1E2B',
+            hairline: '#222634',
+            accent: '#6366F1',
+            accentCyan: '#06B6D4',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      background-color: #09090B;
+      color: #F4F4F5;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow-x: hidden;
+    }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #09090B; }
+    ::-webkit-scrollbar-thumb { background: #27272A; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
+    .glass-panel {
+      background: rgba(19, 22, 31, 0.78);
+      backdrop-filter: blur(12px);
+      border: 1px solid #222634;
+    }
+    .hairline-card {
+      background: #0E1015;
+      border: 1px solid #1E2230;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+    }
+    .hairline-card:hover {
+      border-color: #2E3448;
+    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="min-h-screen bg-obsidian text-zinc-100 flex flex-col md:flex-row selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <!-- COMPACT DESKTOP SIDEBAR (Visible on md+ screens) -->
+  <aside class="hidden md:flex md:w-60 lg:w-64 flex-col bg-carbon border-r border-hairline shrink-0 select-none">
+    <div class="p-4 border-b border-hairline flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-display font-bold text-sm">
+          AG
+        </div>
+        <div>
+          <div class="font-display font-semibold text-sm tracking-tight text-white flex items-center gap-1.5">
+            Antigravity
+            <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">IDE</span>
+          </div>
+          <div class="text-[11px] text-zinc-400 font-mono">Remote Control v1.0</div>
+        </div>
+      </div>
+      <span id="sidebar-conn-dot" class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" title="Companion Always-Ready Online"></span>
+    </div>
+
+    <!-- Active Workspace Pill -->
+    <div class="px-3 py-2.5 border-b border-hairline">
+      <label for="sidebar-workspace-select" class="block text-[10px] font-mono uppercase tracking-wider text-zinc-400 mb-1">Active Workspace</label>
+      <select id="sidebar-workspace-select" onchange="switchWorkspace(this.value)" class="w-full bg-surface text-xs text-zinc-200 font-mono rounded-md px-2.5 py-1.5 border border-hairline focus:outline-none focus:border-indigo-500">
+      </select>
+    </div>
+
+    <!-- Primary & Contextual Navigation -->
+    <nav class="flex-1 overflow-y-auto p-2 space-y-0.5" id="desktop-sidebar-nav">
+    </nav>
+
+    <!-- Bottom Always-Ready Status -->
+    <div class="p-3 border-t border-hairline bg-obsidian/60 space-y-2">
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-zinc-400 flex items-center gap-1.5">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+          Always-Ready Daemon
+        </span>
+        <span class="font-mono text-emerald-400" id="sidebar-uptime">ACTIVE</span>
+      </div>
+      <div class="text-[10px] font-mono text-zinc-400 truncate" id="sidebar-active-model">
+        Model: gemini-2.5-pro-antigravity
+      </div>
+      <button onclick="openQrModal()" class="w-full py-1.5 px-2.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center justify-center gap-1.5 transition">
+        <i data-lucide="qr-code" class="w-3.5 h-3.5 text-indigo-400"></i>
+        Pair Device / QR
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN APPLICATION COLUMN -->
+  <div class="flex-1 flex flex-col min-w-0 pb-20 md:pb-0">
+
+    <!-- TOP STATUS & CONTEXTUAL NAVIGATION BAR -->
+    <header class="sticky top-0 z-30 glass-panel border-b border-hairline px-3.5 py-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="md:hidden w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/40 flex items-center justify-center text-indigo-400 font-display font-bold text-xs shrink-0">
+            AG
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2">
+              <h1 id="top-view-title" class="font-display font-semibold text-sm sm:text-base text-white truncate">Overview Command</h1>
+              <span id="connection-mode-badge" class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                IDE + ACP Linked
+              </span>
+            </div>
+            <p id="top-view-subtitle" class="text-[11px] text-zinc-400 truncate">
+              Standalone Google Antigravity IDE (VS Code fork) • Host: Nihal-MacBook-Pro.tailnet
+            </p>
+          </div>
+        </div>
+
+        <!-- Right Quick Controls -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button onclick="setActiveView('approvals')" id="top-approvals-btn" class="relative px-2.5 py-1.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1.5 transition" title="Approval Centre">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span class="hidden sm:inline">Approvals</span>
+            <span id="top-approvals-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">2</span>
+          </button>
+
+          <button onclick="openQuickTaskModal()" class="px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white flex items-center gap-1.5 transition shadow-sm">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+            <span>New Task</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Contextual Sub-Navigation Pills (Terminal, Files, Git, Desktop, Models, Approvals, Capabilities) -->
+      <div class="mt-2.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5" id="contextual-pill-bar">
+      </div>
+    </header>
+
+    <!-- TRANSPARENCY & CONNECTION NOTICE BANNER -->
+    <div id="mcp-notice-banner" class="bg-indigo-950/30 border-b border-indigo-500/20 px-3.5 py-2 flex items-center justify-between gap-3 text-xs text-indigo-200">
+      <div class="flex items-center gap-2 min-w-0">
+        <i data-lucide="info" class="w-4 h-4 text-indigo-400 shrink-0"></i>
+        <span class="truncate">
+          <strong>Environment &amp; MCP Notice:</strong> Preview runs in-browser with full state &amp; JSON/CSV export because it cannot directly reach your private localhost companion server until paired locally. 21st.dev Magic MCP (<code class="font-mono text-[11px] text-indigo-300">@21st-dev/magic</code>) was not mounted in the cloud build sandbox; <code class="font-mono text-[11px] text-indigo-300">.mcp.json</code> is pre-configured in the project archive.
+        </span>
+      </div>
+      <button onclick="dismissMcpBanner()" class="text-zinc-400 hover:text-white p-1 shrink-0" title="Dismiss banner">
+        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+
+    <!-- MAIN DYNAMIC VIEW CONTAINER -->
+    <main id="main-view-container" class="flex-1 p-3.5 sm:p-5 max-w-7xl w-full mx-auto space-y-4">
+    </main>
+
+  </div>
+
+  <!-- FIXED MOBILE BOTTOM NAVIGATION BAR (5 Required Primary Tabs) -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-40 glass-panel border-t border-hairline px-2 py-1.5 flex items-center justify-around select-none" id="mobile-bottom-nav">
+  </nav>
+
+  <!-- MODAL: QUICK TASK COMPOSER -->
+  <div id="task-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="w-full sm:max-w-lg bg-carbon border border-hairline rounded-t-2xl sm:rounded-xl overflow-hidden shadow-2xl">
+      <div class="px-4 py-3 border-b border-hairline flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="terminal-square" class="w-4 h-4 text-indigo-400"></i>
+          <h3 class="font-display font-semibold text-sm text-white">Launch Antigravity Agent Task</h3>
+        </div>
+        <button onclick="closeQuickTaskModal()" class="text-zinc-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3">
+        <div>
+          <label for="modal-task-prompt" class="block text-xs text-zinc-400 mb-1">Task Instructions / Prompt</label>
+          <textarea id="modal-task-prompt" rows="3" placeholder="e.g., Refactor MODIS thermal anomaly shader in ThreeGlobe.tsx and add unit tests..." class="w-full bg-surface border border-hairline rounded-lg p-2.5 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500 font-sans"></textarea>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label for="modal-task-model" class="block text-[11px] font-mono text-zinc-400 mb-1">AI Model (Real ACP/IDE Selection)</label>
+            <select id="modal-task-model" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-indigo-500"></select>
+          </div>
+          <div>
+            <label for="modal-task-agent" class="block text-[11px] font-mono text-zinc-400 mb-1">Target Agent</label>
+            <select id="modal-task-agent" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-indigo-500"></select>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label for="modal-task-project" class="block text-[11px] font-mono text-zinc-400 mb-1">Project Workspace</label>
+            <select id="modal-task-project" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-indigo-500"></select>
+          </div>
+          <div>
+            <label for="modal-task-mode" class="block text-[11px] font-mono text-zinc-400 mb-1">Execution Policy Mode</label>
+            <select id="modal-task-mode" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-2 text-xs text-zinc-100 font-mono focus:outline-none focus:border-indigo-500">
+              <option value="autonomous">Autonomous (Auto-Approve Safe Edits)</option>
+              <option value="supervised_approval">Supervised (Require File/Tool Approval)</option>
+              <option value="plan_only">Plan &amp; Diff Preview Only</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="modal-task-attachment" class="block text-[11px] font-mono text-zinc-400 mb-1">Context File Attachment (Optional)</label>
+          <input id="modal-task-attachment" type="text" placeholder="src/components/GlobeCanvas.tsx" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="pt-2 flex items-center justify-end gap-2 border-t border-hairline">
+          <button onclick="closeQuickTaskModal()" class="px-3 py-1.5 rounded-md bg-surface hover:bg-surfaceHover text-xs text-zinc-300">Cancel</button>
+          <button onclick="submitModalTask()" class="px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white flex items-center gap-1.5">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i>
+            Dispatch to Agent
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: QR DEVICE PAIRING & COMPANION ENDPOINT -->
+  <div id="qr-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-carbon border border-hairline rounded-xl overflow-hidden shadow-2xl">
+      <div class="px-4 py-3 border-b border-hairline flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="qr-code" class="w-4 h-4 text-indigo-400"></i>
+          <h3 class="font-display font-semibold text-sm text-white">Secure Device Pairing (QR + Tailscale)</h3>
+        </div>
+        <button onclick="closeQrModal()" class="text-zinc-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-3 text-xs">
+        <div class="p-3 rounded-lg bg-surface border border-hairline flex flex-col items-center gap-2.5">
+          <canvas id="qr-canvas" width="168" height="168" class="rounded bg-white p-2"></canvas>
+          <div class="text-center">
+            <div class="font-mono text-sm font-semibold text-indigo-300" id="qr-code-digits">PAIR-849-204</div>
+            <div class="text-[11px] text-zinc-400" id="qr-expiry-text">One-time HMAC-SHA256 token • Expires in 05:00</div>
+          </div>
+        </div>
+        <div>
+          <label for="companion-endpoint-input" class="block text-[11px] font-mono text-zinc-400 mb-1">Companion Service Endpoint (Tailscale / Local LAN)</label>
+          <input id="companion-endpoint-input" type="text" value="https://nihal-macbook.tailnet-8a2c.ts.net:8787" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs font-mono text-zinc-200" />
+        </div>
+        <div class="flex items-center justify-between gap-2 pt-1">
+          <button onclick="regenerateQrCode()" class="px-3 py-1.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-zinc-200 flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            Rotate QR Code
+          </button>
+          <button onclick="simulatePairSuccess()" class="px-3.5 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center gap-1.5">
+            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+            Verify &amp; Pair Session
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMATION DIALOG (Replaces window.confirm for destructive actions) -->
+  <div id="confirm-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="w-full max-w-sm bg-carbon border border-hairline rounded-xl overflow-hidden shadow-2xl p-4 space-y-3">
+      <div class="flex items-center gap-2 text-amber-400">
+        <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+        <h3 id="confirm-modal-title" class="font-display font-semibold text-sm text-white">Confirm Operation</h3>
+      </div>
+      <p id="confirm-modal-body" class="text-xs text-zinc-300 leading-relaxed"></p>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-hairline">
+        <button onclick="closeConfirmModal()" class="px-3 py-1.5 rounded-md bg-surface hover:bg-surfaceHover text-xs text-zinc-300">Cancel</button>
+        <button id="confirm-modal-accept" class="px-3.5 py-1.5 rounded-md bg-rose-600 hover:bg-rose-500 text-xs font-medium text-white">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="fixed top-16 right-4 z-50 space-y-2 max-w-xs w-full pointer-events-none"></div>
+
+  <script>
+    // =========================================================================
+    // CENTRAL APPLICATION STATE (Persisted to localStorage with safe fallback)
+    // =========================================================================
+    const STORAGE_KEY = 'antigravity_mobile_state_v1';
+
+    const DEFAULT_STATE = {
+      activeView: 'overview',
+      mcpBannerDismissed: false,
+      companionStatus: {
+        online: true,
+        ideStatus: 'Connected (Antigravity IDE 1.96.2-agy)',
+        alwaysReady: true,
+        autoStartEnabled: true,
+        autoLaunchIde: true,
+        hostName: 'Nihal-MacBook-Pro.tailnet',
+        hostOs: 'macOS Sequoia 15.2 (arm64) / Linux Companion Ready',
+        tailscaleIp: '100.94.18.42:8787',
+        uptime: '14h 38m',
+        lastHeartbeat: 'Just now',
+        notificationsEnabled: true,
+      },
+      activeWorkspace: 'cleo-fire-platform',
+      selectedModelId: 'gemini-2.5-pro-antigravity',
+      selectedAgentId: 'acp-antigravity-coder',
+      selectedExecutionMode: 'autonomous',
+      modelConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 8192,
+        thinkingBudget: 'medium',
+      },
+      modelHistory: [
+        { timestamp: '2026-11-17T20:45:10+05:30', modelId: 'gemini-2.5-pro-antigravity', scope: 'ACP Session & Task Composer', actor: 'Mohammed Nihal (Mobile)' },
+        { timestamp: '2026-11-17T19:12:04+05:30', modelId: 'gemini-2.5-flash-antigravity', scope: 'ACP Fast Diagnostics', actor: 'Mohammed Nihal (Mobile)' }
+      ],
+      models: [
+        {
+          id: 'gemini-2.5-pro-antigravity',
+          name: 'Gemini 2.5 Pro (Antigravity Agentic)',
+          provider: 'Google Antigravity (IDE / ACP)',
+          available: true,
+          contextWindow: '1,048,576 tokens',
+          capabilities: ['Multi-file Refactor', 'Tool Calling', 'Terminal Execution', 'Git Diff Analysis', 'Deep Codebase Indexing'],
+          supportedParams: ['temperature', 'maxOutputTokens', 'thinkingBudget'],
+          scopeSupport: 'ACP & CLI Direct Switching (Native IDE side-panel requires UI automation)',
+          latencyMs: 620
+        },
+        {
+          id: 'gemini-2.5-flash-antigravity',
+          name: 'Gemini 2.5 Flash (Low-Latency Coding)',
+          provider: 'Google Antigravity (IDE / ACP)',
+          available: true,
+          contextWindow: '1,048,576 tokens',
+          capabilities: ['Fast Inline Edit', 'Diagnostics Fix', 'Terminal Command Assist', 'Test Generation'],
+          supportedParams: ['temperature', 'maxOutputTokens'],
+          scopeSupport: 'ACP & CLI Direct Switching',
+          latencyMs: 240
+        },
+        {
+          id: 'claude-3-7-sonnet-acp',
+          name: 'Claude 3.7 Sonnet (ACP Router)',
+          provider: 'Anthropic via ACP Bridge',
+          available: true,
+          contextWindow: '200,000 tokens',
+          capabilities: ['Extended Thinking', 'Multi-file Edit', 'Tool Use'],
+          supportedParams: ['temperature', 'maxOutputTokens', 'thinkingBudget'],
+          scopeSupport: 'Independent ACP Session Only',
+          latencyMs: 780
+        },
+        {
+          id: 'qwen-2.5-coder-32b-local',
+          name: 'Qwen 2.5 Coder 32B (Air-Gapped Local)',
+          provider: 'Local Ollama ACP Endpoint',
+          available: false,
+          unavailableReason: 'Local Ollama server on 127.0.0.1:11434 is stopped.',
+          contextWindow: '131,072 tokens',
+          capabilities: ['Offline Inference', 'Code Completion'],
+          supportedParams: ['temperature'],
+          scopeSupport: 'Unavailable until local daemon starts',
+          latencyMs: null
+        }
+      ],
+      agents: [
+        {
+          id: 'acp-antigravity-coder',
+          name: 'Antigravity ACP Autonomous Engineer',
+          origin: 'acp',
+          originBadge: '2. ACP-Connected Agent',
+          status: 'ready',
+          description: 'Primary Agent Client Protocol (ACP v1) engineer with full read/write file access, Git diff inspection, and permission-gated PTY terminal execution.',
+          capabilities: ['Multi-file synthesis', 'Real-time execution trace', 'Permission negotiation', 'Automated test runner'],
+          tools: ['fs.readFile', 'fs.writeFile', 'git.diff', 'terminal.exec', 'diagnostics.inspect'],
+          supportedModes: ['autonomous', 'supervised_approval', 'plan_only']
+        },
+        {
+          id: 'native-antigravity-ide-agent',
+          name: 'Antigravity Native IDE Side-Panel Agent',
+          origin: 'native_ide',
+          originBadge: '1. Native Antigravity IDE Agent',
+          status: 'connected',
+          description: 'Built-in Google Antigravity IDE editor agent monitored via the VS Code Companion Extension. Existing native webview threads are distinct from ACP sessions.',
+          capabilities: ['Active editor context', 'Inline diff review', 'IDE command invocation'],
+          tools: ['vscode.open', 'vscode.applyWorkspaceEdit', 'vscode.languages.getDiagnostics'],
+          supportedModes: ['interactive_ide', 'supervised_approval']
+        },
+        {
+          id: 'external-agy-cli-agent',
+          name: 'Antigravity CLI (agy) Batch Runner',
+          origin: 'external_cli',
+          originBadge: '3. External CLI Agent',
+          status: 'ready',
+          description: 'Headless CLI agent invoked via local `agy` binary for background repository audits, migrations, and test suites.',
+          capabilities: ['Headless execution', 'CI/CD verification', 'Repository-wide search'],
+          tools: ['cli.run', 'fs.search', 'git.status'],
+          supportedModes: ['autonomous', 'plan_only']
+        }
+      ],
+      workspaces: {
+        'cleo-fire-platform': {
+          name: 'cleo-fire-platform',
+          path: '/Users/nihal/dev/cleo-fire-platform',
+          branch: 'main',
+          branches: ['main', 'feat/viirs-3d-swath', 'fix/modis-shader'],
+          description: '3D Earth Wildfire Thermal Anomaly Platform (Three.js + Next.js + FastAPI)',
+          selectedFile: 'src/components/GlobeSwathShader.ts',
+          files: {
+            'src/components/GlobeSwathShader.ts': {
+              language: 'typescript',
+              origin: 'agent',
+              modifiedBy: 'acp-antigravity-coder',
+              modifiedAt: '2 mins ago',
+              content: `// CLEO Sub-Pixel Wildfire Swath Footprint Shader (MODIS 1km / VIIRS 375m)\nexport interface ThermalAnomalyPoint {\n  lat: number;\n  lon: number;\n  frpMw: number;\n  sensor: 'MODIS_TERRA' | 'VIIRS_SNPP' | 'VIIRS_NOAA20';\n  confidence: number;\n}\n\nexport function computeSwathRadiusMeters(sensor: ThermalAnomalyPoint['sensor'], scanAngleDeg: number): number {\n  const baseNadir = sensor === 'MODIS_TERRA' ? 1000 : 375;\n  const cosTheta = Math.max(0.35, Math.cos((scanAngleDeg * Math.PI) / 180));\n  return Math.round(baseNadir / cosTheta);\n}\n`,
+              diff: `@@ -8,4 +8,6 @@\n export function computeSwathRadiusMeters(sensor: ThermalAnomalyPoint['sensor'], scanAngleDeg: number): number {\n   const baseNadir = sensor === 'MODIS_TERRA' ? 1000 : 375;\n-  return baseNadir;\n+  const cosTheta = Math.max(0.35, Math.cos((scanAngleDeg * Math.PI) / 180));\n+  return Math.round(baseNadir / cosTheta);\n }`
+            },
+            'src/api/firmsClient.ts': {
+              language: 'typescript',
+              origin: 'manual',
+              modifiedBy: 'Mohammed Nihal',
+              modifiedAt: '18 mins ago',
+              content: `export async function fetchActiveFires(bbox: [number, number, number, number]) {\n  const endpoint = process.env.NEXT_PUBLIC_CLEO_API_URL || '/api/fires';\n  const res = await fetch(\`\${endpoint}?bbox=\${bbox.join(',')}\`);\n  if (!res.ok) throw new Error('Failed to fetch MODIS/VIIRS thermal anomalies');\n  return res.json();\n}\n`,
+              diff: `No uncommitted changes against HEAD.`
+            },
+            'README.md': {
+              language: 'markdown',
+              origin: 'workspace',
+              modifiedBy: null,
+              modifiedAt: '2 hours ago',
+              content: `# CLEO — Geospatial Fire Intelligence\nHarmonizes NASA MODIS and VIIRS active-fire detections on an interactive Three.js 3D globe.\n`,
+              diff: `No uncommitted changes against HEAD.`
+            }
+          },
+          gitChanged: [
+            { path: 'src/components/GlobeSwathShader.ts', status: 'M', staged: true, origin: 'agent' },
+            { path: 'src/api/firmsClient.ts', status: 'M', staged: false, origin: 'manual' }
+          ],
+          gitCommits: [
+            { shortHash: 'a8f31c9', author: 'Mohammed Nihal', date: '25 mins ago', subject: 'feat(globe): add progressive disclosure drawer for VIIRS telemetry' },
+            { shortHash: '7d20e4b', author: 'Mohammed Nihal', date: '2 hours ago', subject: 'perf(three): instanced mesh buffer for 50k thermal points' },
+            { shortHash: '3c19b02', author: 'Mohammed Nihal', date: 'Yesterday', subject: 'chore: initialize CLEO NASA Space Apps repository' }
+          ]
+        },
+        'souund-asl-studio': {
+          name: 'souund-asl-studio',
+          path: '/Users/nihal/dev/souund-asl-studio',
+          branch: 'feat/asl-realtime-tts',
+          branches: ['main', 'feat/asl-realtime-tts'],
+          description: 'AI Sign Language to Natural Spoken Audio & Editable Transcripts (US-First ASL MVP)',
+          selectedFile: 'src/pipeline/aslKeypointEncoder.py',
+          files: {
+            'src/pipeline/aslKeypointEncoder.py': {
+              language: 'python',
+              origin: 'agent',
+              modifiedBy: 'acp-antigravity-coder',
+              modifiedAt: '14 mins ago',
+              content: `import numpy as np\n\ndef normalize_hand_landmarks(landmarks: np.ndarray) -> np.ndarray:\n    \"\"\"Normalizes 21 MediaPipe 3D hand keypoints relative to wrist origin.\"\"\"\n    wrist = landmarks[0:1, :]\n    centered = landmarks - wrist\n    scale = np.linalg.norm(centered[9, :]) + 1e-6\n    return centered / scale\n`,
+              diff: `@@ -3,3 +3,5 @@\n def normalize_hand_landmarks(landmarks: np.ndarray) -> np.ndarray:\n     wrist = landmarks[0:1, :]\n+    centered = landmarks - wrist\n+    return centered / (np.linalg.norm(centered[9, :]) + 1e-6)`
+            },
+            'package.json': {
+              language: 'json',
+              origin: 'workspace',
+              modifiedBy: null,
+              modifiedAt: '1 day ago',
+              content: `{\n  "name": "souund-asl-studio",\n  "version": "0.4.0",\n  "private": true\n}\n`,
+              diff: `No uncommitted changes against HEAD.`
+            }
+          },
+          gitChanged: [
+            { path: 'src/pipeline/aslKeypointEncoder.py', status: 'M', staged: false, origin: 'agent' }
+          ],
+          gitCommits: [
+            { shortHash: 'e4190a1', author: 'Mohammed Nihal', date: '1 hour ago', subject: 'feat(asl): switch keypoint window stride for 60fps streamer mode' },
+            { shortHash: '9b812c4', author: 'Mohammed Nihal', date: '1 day ago', subject: 'docs: update US creator market entry architecture' }
+          ]
+        },
+        'council-med-workstation': {
+          name: 'council-med-workstation',
+          path: '/Users/nihal/dev/council-med-workstation',
+          branch: 'main',
+          branches: ['main', 'feat/swin-unetr-ensemble'],
+          description: 'Local-First Multi-Model Ensemble Workstation for MRI, CT & X-Ray Diagnostics',
+          selectedFile: 'council/ensemble_voting.py',
+          files: {
+            'council/ensemble_voting.py': {
+              language: 'python',
+              origin: 'manual',
+              modifiedBy: 'Mohammed Nihal',
+              modifiedAt: '45 mins ago',
+              content: `def confidence_weighted_soft_vote(predictions: list[dict]) -> dict:\n    total_w = sum(p['confidence'] for p in predictions) or 1.0\n    score = sum(p['score'] * p['confidence'] for p in predictions) / total_w\n    return {'consensus_score': round(score, 4), 'models_count': len(predictions)}\n`,
+              diff: `No uncommitted changes against HEAD.`
+            }
+          },
+          gitChanged: [],
+          gitCommits: [
+            { shortHash: '51c8a9e', author: 'Mohammed Nihal', date: '3 hours ago', subject: 'feat(mri): calibrate Grad-CAM overlay opacity threshold' }
+          ]
+        }
+      },
+      tasks: [
+        {
+          id: 'task_1794929102',
+          createdAt: '2026-11-17T20:54:12+05:30',
+          project: 'cleo-fire-platform',
+          prompt: 'Update computeSwathRadiusMeters in GlobeSwathShader.ts to account for off-nadir scan angle geometry for MODIS and VIIRS sensors.',
+          agentId: 'acp-antigravity-coder',
+          agentName: 'Antigravity ACP Autonomous Engineer',
+          agentOrigin: '2. ACP-Connected Agent',
+          modelId: 'gemini-2.5-pro-antigravity',
+          executionMode: 'autonomous',
+          status: 'completed',
+          durationMs: 3420,
+          inputTokens: 4120,
+          outputTokens: 685,
+          totalTokens: 4805,
+          trace: [
+            { step: 1, event: 'Prompt submitted', time: '20:54:12', status: 'completed', detail: 'Submitted from Antigravity Mobile PWA (iPhone)' },
+            { step: 2, event: 'Model selected', time: '20:54:12', status: 'completed', detail: 'gemini-2.5-pro-antigravity (temp=0.2, maxTokens=8192)' },
+            { step: 3, event: 'Agent started', time: '20:54:13', status: 'completed', detail: 'Antigravity ACP Autonomous Engineer initialized session' },
+            { step: 4, event: 'Tool invoked', time: '20:54:13', status: 'completed', detail: 'fs.readFile("src/components/GlobeSwathShader.ts")' },
+            { step: 5, event: 'Tool result', time: '20:54:14', status: 'completed', detail: 'Read 312 bytes from src/components/GlobeSwathShader.ts' },
+            { step: 6, event: 'File modified', time: '20:54:15', status: 'completed', detail: 'Updated src/components/GlobeSwathShader.ts (+3 lines, -1 line) [origin: agent]' },
+            { step: 7, event: 'Task completed', time: '20:54:15', status: 'completed', detail: 'Diagnostics passed (0 TypeScript errors) in 3,420ms' }
+          ]
+        },
+        {
+          id: 'task_1794929480',
+          createdAt: '2026-11-17T20:57:40+05:30',
+          project: 'souund-asl-studio',
+          prompt: 'Run benchmark suite on ASL keypoint encoder and prune stale temporary cache directory.',
+          agentId: 'acp-antigravity-coder',
+          agentName: 'Antigravity ACP Autonomous Engineer',
+          agentOrigin: '2. ACP-Connected Agent',
+          modelId: 'gemini-2.5-flash-antigravity',
+          executionMode: 'supervised_approval',
+          status: 'awaiting_approval',
+          durationMs: 1890,
+          inputTokens: 2180,
+          outputTokens: 310,
+          totalTokens: 2490,
+          trace: [
+            { step: 1, event: 'Prompt submitted', time: '20:57:40', status: 'completed', detail: 'Submitted in supervised_approval mode' },
+            { step: 2, event: 'Model selected', time: '20:57:40', status: 'completed', detail: 'gemini-2.5-flash-antigravity' },
+            { step: 3, event: 'Agent started', time: '20:57:41', status: 'completed', detail: 'ACP session active' },
+            { step: 4, event: 'Tool invoked', time: '20:57:41', status: 'completed', detail: 'terminal.exec("rm -rf ./tmp/keypoint_cache")' },
+            { step: 5, event: 'Permission requested', time: '20:57:42', status: 'pending_approval', detail: 'Waiting for mobile operator approval (apr_901) before executing rm -rf' }
+          ]
+        }
+      ],
+      approvals: [
+        {
+          id: 'apr_901',
+          createdAt: '2026-11-17T20:57:42+05:30',
+          project: 'souund-asl-studio',
+          taskId: 'task_1794929480',
+          agentId: 'acp-antigravity-coder',
+          category: 'terminal_command',
+          operation: 'ACP Agent requests destructive terminal command execution',
+          commandOrPath: 'rm -rf ./tmp/keypoint_cache',
+          riskLevel: 'critical',
+          status: 'pending'
+        },
+        {
+          id: 'apr_902',
+          createdAt: '2026-11-17T20:56:15+05:30',
+          project: 'cleo-fire-platform',
+          taskId: null,
+          agentId: 'external-agy-cli-agent',
+          category: 'file_operation',
+          operation: 'Modify workspace environment template (.env.example)',
+          commandOrPath: 'cleo-fire-platform/.env.example',
+          riskLevel: 'high',
+          status: 'pending'
+        }
+      ],
+      terminals: {
+        activeSessionId: 'term_main',
+        searchQuery: '',
+        sessions: [
+          {
+            id: 'term_main',
+            name: 'zsh-main (cleo)',
+            project: 'cleo-fire-platform',
+            cwd: '/Users/nihal/dev/cleo-fire-platform',
+            pid: 4821,
+            status: 'running',
+            history: ['git status -sb', 'npm run typecheck', 'agy status --json'],
+            lines: [
+              'nihal@MacBook-Pro cleo-fire-platform % git status -sb',
+              '## main...origin/main',
+              'M  src/components/GlobeSwathShader.ts',
+              ' M src/api/firmsClient.ts',
+              'nihal@MacBook-Pro cleo-fire-platform % npm run typecheck',
+              '> cleo-fire-platform@1.0.0 typecheck',
+              '> tsc --noEmit',
+              '✓ TypeScript check passed (0 errors, 0 warnings) in 1.42s',
+              'nihal@MacBook-Pro cleo-fire-platform % agy status --json',
+              '{"ide":"Antigravity IDE 1.96.2","agyDaemon":"online","acpPort":8788,"activeWorkspace":"cleo-fire-platform"}'
+            ]
+          },
+          {
+            id: 'term_souund',
+            name: 'python-env (souund)',
+            project: 'souund-asl-studio',
+            cwd: '/Users/nihal/dev/souund-asl-studio',
+            pid: 5109,
+            status: 'running',
+            history: ['pytest tests/test_encoder.py'],
+            lines: [
+              '(venv) nihal@MacBook-Pro souund-asl-studio % pytest tests/test_encoder.py',
+              '=================== test session starts ===================',
+              'collected 6 items',
+              'tests/test_encoder.py ......                         [100%]',
+              '==================== 6 passed in 0.84s ===================='
+            ]
+          }
+        ]
+      },
+      desktop: {
+        activeWindow: 'Google Antigravity IDE — cleo-fire-platform',
+        cursorX: 540,
+        cursorY: 310,
+        zoom: 100,
+        quality: 'High (60 FPS WebRTC/Canvas)',
+        lastAction: 'Pointer synced at (540, 310)',
+        inputLog: [
+          { time: '20:56:40', action: 'Window focus -> Google Antigravity IDE — cleo-fire-platform' },
+          { time: '20:57:02', action: 'Shortcut dispatched -> Cmd+Shift+P (Command Palette)' }
+        ]
+      },
+      activityFilters: {
+        project: 'all',
+        agentId: 'all',
+        modelId: 'all',
+        category: 'all',
+        status: 'all',
+        search: ''
+      },
+      activityEvents: [
+        {
+          id: 'evt_108',
+          timestamp: '2026-11-17T20:57:42+05:30',
+          project: 'souund-asl-studio',
+          agentId: 'acp-antigravity-coder',
+          modelId: 'gemini-2.5-flash-antigravity',
+          category: 'permission_request',
+          description: 'Intercepted restricted command "rm -rf ./tmp/keypoint_cache" — queued in Approval Centre (apr_901)',
+          status: 'pending_approval',
+          durationMs: 12,
+          details: { approvalId: 'apr_901', policyRule: 'rm -rf recursive deletion guard' }
+        },
+        {
+          id: 'evt_107',
+          timestamp: '2026-11-17T20:56:30+05:30',
+          project: 'cleo-fire-platform',
+          agentId: 'native-antigravity-ide-agent',
+          modelId: 'gemini-2.5-pro-antigravity',
+          category: 'ide_event',
+          description: 'Antigravity IDE saved src/components/GlobeSwathShader.ts (0 diagnostics errors)',
+          status: 'completed',
+          durationMs: 45,
+          details: { source: 'vscode.workspace.onDidSaveTextDocument', errors: 0, warnings: 0 }
+        },
+        {
+          id: 'evt_106',
+          timestamp: '2026-11-17T20:54:15+05:30',
+          project: 'cleo-fire-platform',
+          agentId: 'acp-antigravity-coder',
+          modelId: 'gemini-2.5-pro-antigravity',
+          category: 'task_completion',
+          description: 'Completed task_1794929102: Off-nadir scan angle geometry in GlobeSwathShader.ts',
+          status: 'completed',
+          durationMs: 3420,
+          details: { taskId: 'task_1794929102', inputTokens: 4120, outputTokens: 685, totalTokens: 4805 }
+        },
+        {
+          id: 'evt_105',
+          timestamp: '2026-11-17T20:54:15+05:30',
+          project: 'cleo-fire-platform',
+          agentId: 'acp-antigravity-coder',
+          modelId: 'gemini-2.5-pro-antigravity',
+          category: 'file_modified',
+          description: 'Modified src/components/GlobeSwathShader.ts (origin: agent)',
+          status: 'completed',
+          durationMs: 18,
+          details: { file: 'src/components/GlobeSwathShader.ts', origin: 'agent', linesAdded: 3, linesRemoved: 1 }
+        },
+        {
+          id: 'evt_104',
+          timestamp: '2026-11-17T20:50:19+05:30',
+          project: 'cleo-fire-platform',
+          agentId: null,
+          modelId: null,
+          category: 'terminal_command',
+          description: 'Executed terminal command in zsh-main: npm run typecheck',
+          status: 'completed',
+          durationMs: 1420,
+          details: { sessionId: 'term_main', exitCode: 0 }
+        },
+        {
+          id: 'evt_103',
+          timestamp: '2026-11-17T20:45:10+05:30',
+          project: 'cleo-fire-platform',
+          agentId: null,
+          modelId: 'gemini-2.5-pro-antigravity',
+          category: 'model_selection',
+          description: 'Selected model Gemini 2.5 Pro (Antigravity Agentic) for ACP & CLI sessions',
+          status: 'completed',
+          durationMs: 8,
+          details: { scope: 'acp_session', temperature: 0.2, maxOutputTokens: 8192 }
+        },
+        {
+          id: 'evt_102',
+          timestamp: '2026-11-17T20:32:00+05:30',
+          project: 'cleo-fire-platform',
+          agentId: null,
+          modelId: null,
+          category: 'git',
+          description: 'Committed a8f31c9 on branch main: feat(globe): add progressive disclosure drawer for VIIRS telemetry',
+          status: 'completed',
+          durationMs: 190,
+          details: { branch: 'main', commit: 'a8f31c9' }
+        },
+        {
+          id: 'evt_101',
+          timestamp: '2026-11-17T20:15:00+05:30',
+          project: 'global',
+          agentId: null,
+          modelId: null,
+          category: 'security',
+          description: 'Redacted credential token [REDACTED_CREDENTIAL] from environment log stream',
+          status: 'completed',
+          durationMs: 4,
+          details: { policy: 'Automatic regex scrubber (AIza / ya29 / Bearer)' }
+        }
+      ],
+      capabilityMatrix: [
+        { feature: 'Workspace & Project Discovery', classification: '1. Fully supported', mechanism: 'Reads Antigravity storage.json + authorized workspace roots' },
+        { feature: 'File Explorer, Live Code Editor & Unified Diffs', classification: '1. Fully supported', mechanism: 'Sandboxed fs/promises + git diff + agent vs manual origin ledger' },
+        { feature: 'Interactive Multi-Session PTY Terminal', classification: '1. Fully supported', mechanism: 'Real Python/Node PTY bridge + dangerous command policy gate' },
+        { feature: 'Git Repository Management (Stage, Commit, Branch, Diff)', classification: '1. Fully supported', mechanism: 'Direct git CLI controller with Activity Timeline persistence' },
+        { feature: 'Persistent Activity Timeline & Execution Traces', classification: '1. Fully supported', mechanism: 'SQLite WAL database + JSON/CSV export + credential redaction' },
+        { feature: 'IDE Telemetry (Active Editor, File Saves, Diagnostics)', classification: '3. Requires IDE extension', mechanism: 'Bundled VS Code-compatible extension (ide-extension/src/extension.ts)' },
+        { feature: 'AI Model Discovery (IDE & ACP Inventory)', classification: '3. Requires IDE extension', mechanism: 'vscode.lm.selectChatModels() + ACP models/list + agy CLI' },
+        { feature: 'AI Model & Agent Selection for New Tasks', classification: '4. Requires ACP', mechanism: 'ACP v1 session/new & session/prompt with explicit modelId' },
+        { feature: 'Mid-Thread Model Switch Inside Native IDE Webview', classification: '5. Requires UI automation', mechanism: 'Private webview state; use Remote Desktop or start an ACP session' },
+        { feature: 'Direct Mutation of Existing Native IDE Chat Threads', classification: '2. Partially supported', mechanism: 'ACP sessions run independently; native threads viewed via Remote Desktop' },
+        { feature: 'Full Remote Desktop Screen & Input Control', classification: '1. Fully supported', mechanism: 'Companion Desktop Frame Stream + Pointer/Keyboard HID Bridge' }
+      ]
+    };
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return { ...DEFAULT_STATE, ...parsed };
+        }
+      } catch (e) {}
+      return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    }
+
+    let state = loadState();
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function redactText(str) {
+      if (typeof str !== 'string') return str;
+      return str
+        .replace(/AIza[0-9A-Za-z\-_]{35}/g, '[REDACTED_CREDENTIAL]')
+        .replace(/ya29\.[0-9A-Za-z\-_]+/g, '[REDACTED_CREDENTIAL]')
+        .replace(/sk-[A-Za-z0-9]{20,}/g, '[REDACTED_CREDENTIAL]')
+        .replace(/Bearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED_CREDENTIAL]');
+    }
+
+    function recordActivity({ project, agentId = null, modelId = null, category, description, status = 'completed', durationMs = 15, details = {} }) {
+      const evt = {
+        id: 'evt_' + Date.now().toString().slice(-5) + '_' + Math.random().toString(36).slice(2, 5),
+        timestamp: new Date().toISOString(),
+        project: project || state.activeWorkspace,
+        agentId,
+        modelId,
+        category,
+        description: redactText(description),
+        status,
+        durationMs,
+        details
+      };
+      state.activityEvents.unshift(evt);
+      saveState();
+      return evt;
+    }
+
+    function showToast(title, message, tone = 'indigo') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const borderMap = {
+        indigo: 'border-indigo-500/40 bg-indigo-950/90 text-indigo-100',
+        emerald: 'border-emerald-500/40 bg-emerald-950/90 text-emerald-100',
+        amber: 'border-amber-500/40 bg-amber-950/90 text-amber-100',
+        rose: 'border-rose-500/40 bg-rose-950/90 text-rose-100'
+      };
+      const el = document.createElement('div');
+      el.className = `pointer-events-auto p-3 rounded-lg border shadow-xl backdrop-blur-md transition-all ${borderMap[tone] || borderMap.indigo}`;
+      el.innerHTML = `
+        <div class="font-display font-semibold text-xs">${escapeHtml(title)}</div>
+        <div class="text-[11px] opacity-90 mt-0.5">${escapeHtml(message)}</div>
+      `;
+      container.appendChild(el);
+      setTimeout(() => {
+        el.remove();
+      }, 3600);
+    }
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // =========================================================================
+    // NAVIGATION DEFINITIONS
+    // =========================================================================
+    // 5 Required Fixed Bottom Navigation Items (Section 3)
+    const PRIMARY_MOBILE_NAV = [
+      { id: 'overview', label: 'Overview', icon: 'layout-dashboard' },
+      { id: 'agents', label: 'Agents', icon: 'bot' },
+      { id: 'projects', label: 'Projects', icon: 'folder-git-2' },
+      { id: 'activity', label: 'Activity', icon: 'activity' },
+      { id: 'settings', label: 'Settings', icon: 'sliders-horizontal' }
+    ];
+
+    // Contextual Navigation Items (Section 3: Terminal, Files, Git, Desktop, Models + Approvals)
+    const ALL_VIEWS = [
+      { id: 'overview', label: 'Overview', icon: 'layout-dashboard', group: 'Core' },
+      { id: 'agents', label: 'Agents & Tasks', icon: 'bot', group: 'AI Control' },
+      { id: 'models', label: 'AI Models', icon: 'cpu', group: 'AI Control' },
+      { id: 'projects', label: 'Projects & Files', icon: 'folder-code', group: 'Workspace' },
+      { id: 'terminal', label: 'Terminal (PTY)', icon: 'terminal', group: 'Workspace' },
+      { id: 'git', label: 'Git Control', icon: 'git-branch', group: 'Workspace' },
+      { id: 'approvals', label: 'Approval Centre', icon: 'shield-alert', group: 'Security' },
+      { id: 'activity', label: 'Activity & Traces', icon: 'activity', group: 'Observability' },
+      { id: 'desktop', label: 'Remote Desktop', icon: 'monitor-smartphone', group: 'System' },
+      { id: 'settings', label: 'Settings & Matrix', icon: 'sliders-horizontal', group: 'System' }
+    ];
+
+    function setActiveView(viewId) {
+      state.activeView = viewId;
+      saveState();
+      renderAll();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function switchWorkspace(wsKey) {
+      if (!state.workspaces[wsKey]) return;
+      state.activeWorkspace = wsKey;
+      recordActivity({
+        project: wsKey,
+        category: 'workspace',
+        description: `Switched active workspace to ${wsKey} (${state.workspaces[wsKey].path})`,
+        status: 'completed'
+      });
+      showToast('Workspace Switched', `Active project is now ${wsKey}`, 'indigo');
+      renderAll();
+    }
+
+    function dismissMcpBanner() {
+      state.mcpBannerDismissed = true;
+      saveState();
+      const banner = document.getElementById('mcp-notice-banner');
+      if (banner) banner.classList.add('hidden');
+    }
+
+    // =========================================================================
+    // RENDER SHELL & NAVIGATION
+    // =========================================================================
+    function renderNavigation() {
+      const pendingApprovals = state.approvals.filter(a => a.status === 'pending').length;
+      const topCount = document.getElementById('top-approvals-count');
+      if (topCount) {
+        topCount.textContent = String(pendingApprovals);
+        topCount.className = pendingApprovals > 0
+          ? 'px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40'
+          : 'px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-zinc-800 text-zinc-400';
+      }
+
+      const wsSelect = document.getElementById('sidebar-workspace-select');
+      if (wsSelect) {
+        wsSelect.innerHTML = Object.keys(state.workspaces).map(k =>
+          `<option value="${k}" ${k === state.activeWorkspace ? 'selected' : ''}>${k}</option>`
+        ).join('');
+      }
+
+      const activeModelEl = document.getElementById('sidebar-active-model');
+      if (activeModelEl) {
+        activeModelEl.textContent = `Model: ${state.selectedModelId}`;
+      }
+
+      // Desktop Sidebar
+      const sidebarNav = document.getElementById('desktop-sidebar-nav');
+      if (sidebarNav) {
+        sidebarNav.innerHTML = ALL_VIEWS.map(v => {
+          const active = state.activeView === v.id;
+          const badge = v.id === 'approvals' && pendingApprovals > 0
+            ? `<span class="ml-auto px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-300">${pendingApprovals}</span>`
+            : '';
+          return `
+            <button onclick="setActiveView('${v.id}')" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition ${
+              active
+                ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                : 'text-zinc-400 hover:text-zinc-100 hover:bg-surface/70 border border-transparent'
+            }">
+              <i data-lucide="${v.icon}" class="w-4 h-4 shrink-0"></i>
+              <span class="truncate">${v.label}</span>
+              ${badge}
+            </button>
+          `;
+        }).join('');
+      }
+
+      // Contextual Pill Bar
+      const pillBar = document.getElementById('contextual-pill-bar');
+      if (pillBar) {
+        pillBar.innerHTML = ALL_VIEWS.map(v => {
+          const active = state.activeView === v.id;
+          return `
+            <button onclick="setActiveView('${v.id}')" class="shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border transition ${
+              active
+                ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
+                : 'bg-surface/80 text-zinc-400 border-hairline hover:text-zinc-200'
+            }">
+              <i data-lucide="${v.icon}" class="w-3 h-3"></i>
+              <span>${v.label}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      // Mobile Fixed Bottom Navigation (5 core items)
+      const mobileNav = document.getElementById('mobile-bottom-nav');
+      if (mobileNav) {
+        mobileNav.innerHTML = PRIMARY_MOBILE_NAV.map(item => {
+          const active = state.activeView === item.id;
+          return `
+            <button onclick="setActiveView('${item.id}')" class="flex flex-col items-center justify-center py-1 px-2.5 rounded-lg transition ${
+              active ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200'
+            }">
+              <i data-lucide="${item.icon}" class="w-4 h-4"></i>
+              <span class="text-[10px] font-medium mt-0.5">${item.label}</span>
+            </button>
+          `;
+        }).join('');
+      }
+
+      // View Title
+      const currentViewMeta = ALL_VIEWS.find(v => v.id === state.activeView) || ALL_VIEWS[0];
+      const titleEl = document.getElementById('top-view-title');
+      if (titleEl) titleEl.textContent = currentViewMeta.label;
+
+      const banner = document.getElementById('mcp-notice-banner');
+      if (banner) {
+        if (state.mcpBannerDismissed) banner.classList.add('hidden');
+        else banner.classList.remove('hidden');
+      }
+    }
+
+    // =========================================================================
+    // VIEW 1: OVERVIEW DASHBOARD (Section 8)
+    // =========================================================================
+    function renderOverview() {
+      const ws = state.workspaces[state.activeWorkspace];
+      const pendingApprovals = state.approvals.filter(a => a.status === 'pending');
+      const selectedModel = state.models.find(m => m.id === state.selectedModelId) || state.models[0];
+      const selectedAgent = state.agents.find(a => a.id === state.selectedAgentId) || state.agents[0];
+      const recentEvents = state.activityEvents.slice(0, 6);
+
+      return `
+        <!-- Top Status Strip -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div class="hairline-card rounded-xl p-3">
+            <div class="flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Host &amp; IDE Status</span>
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            </div>
+            <div class="font-display font-semibold text-sm text-white mt-1 truncate">Antigravity IDE 1.96.2</div>
+            <div class="text-[11px] font-mono text-zinc-400 mt-0.5 truncate">${escapeHtml(state.companionStatus.tailscaleIp)}</div>
+          </div>
+
+          <div class="hairline-card rounded-xl p-3 cursor-pointer" onclick="setActiveView('projects')">
+            <div class="flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Active Workspace</span>
+              <i data-lucide="folder-git-2" class="w-3.5 h-3.5 text-indigo-400"></i>
+            </div>
+            <div class="font-display font-semibold text-sm text-white mt-1 truncate">${escapeHtml(ws.name)}</div>
+            <div class="text-[11px] font-mono text-indigo-300 mt-0.5 truncate">branch: ${escapeHtml(ws.branch)} (${ws.gitChanged.length} modified)</div>
+          </div>
+
+          <div class="hairline-card rounded-xl p-3 cursor-pointer" onclick="setActiveView('models')">
+            <div class="flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Selected Model (ACP)</span>
+              <i data-lucide="cpu" class="w-3.5 h-3.5 text-cyan-400"></i>
+            </div>
+            <div class="font-display font-semibold text-sm text-white mt-1 truncate">${escapeHtml(selectedModel.name)}</div>
+            <div class="text-[11px] font-mono text-zinc-400 mt-0.5 truncate">Context: ${escapeHtml(selectedModel.contextWindow)}</div>
+          </div>
+
+          <div class="hairline-card rounded-xl p-3 cursor-pointer" onclick="setActiveView('approvals')">
+            <div class="flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Pending Approvals</span>
+              <i data-lucide="shield-alert" class="w-3.5 h-3.5 ${pendingApprovals.length ? 'text-amber-400' : 'text-emerald-400'}"></i>
+            </div>
+            <div class="font-display font-semibold text-sm text-white mt-1">${pendingApprovals.length} Action(s) Waiting</div>
+            <div class="text-[11px] font-mono ${pendingApprovals.length ? 'text-amber-300' : 'text-emerald-300'} mt-0.5">
+              ${pendingApprovals.length ? 'Tap to review & authorize' : 'All tool policies clear'}
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Actions Row -->
+        <div class="hairline-card rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium text-zinc-300">Quick Command Switch:</span>
+            <select onchange="switchWorkspace(this.value)" aria-label="Switch Project Workspace" class="bg-surface border border-hairline rounded-md px-2.5 py-1 text-xs font-mono text-zinc-200">
+              ${Object.keys(state.workspaces).map(k => `<option value="${k}" ${k === state.activeWorkspace ? 'selected' : ''}>Workspace: ${k}</option>`).join('')}
+            </select>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button onclick="setActiveView('models')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="cpu" class="w-3.5 h-3.5 text-cyan-400"></i> Select Model
+            </button>
+            <button onclick="setActiveView('agents')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="bot" class="w-3.5 h-3.5 text-indigo-400"></i> Select Agent
+            </button>
+            <button onclick="setActiveView('terminal')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="terminal" class="w-3.5 h-3.5 text-emerald-400"></i> Terminal
+            </button>
+            <button onclick="setActiveView('projects')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="file-code" class="w-3.5 h-3.5 text-indigo-300"></i> Files
+            </button>
+            <button onclick="setActiveView('git')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="git-branch" class="w-3.5 h-3.5 text-purple-400"></i> Git
+            </button>
+            <button onclick="setActiveView('desktop')" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200 flex items-center gap-1">
+              <i data-lucide="monitor" class="w-3.5 h-3.5 text-amber-400"></i> Desktop
+            </button>
+          </div>
+        </div>
+
+        <!-- Inline Quick Task Composer -->
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="sparkles" class="w-4 h-4 text-indigo-400"></i>
+              <h2 class="font-display font-semibold text-sm text-white">Quick Task Composer</h2>
+            </div>
+            <span class="text-[11px] font-mono text-zinc-400">${escapeHtml(selectedAgent.originBadge)}</span>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input id="quick-composer-input" type="text" placeholder="Instruct ${escapeHtml(selectedAgent.name)} using ${escapeHtml(selectedModel.name)}..." class="flex-1 bg-surface border border-hairline rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500" />
+            <button onclick="submitInlineTask()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white flex items-center justify-center gap-1.5 shrink-0">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i>
+              Run Task
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-[11px] font-mono text-zinc-400">
+            <span>Active Agent: <strong class="text-zinc-200">${escapeHtml(selectedAgent.name)}</strong></span>
+            <span>•</span>
+            <span>Model: <strong class="text-indigo-300">${escapeHtml(selectedModel.id)}</strong></span>
+            <span>•</span>
+            <span>Mode: <strong class="text-emerald-300">${escapeHtml(state.selectedExecutionMode)}</strong></span>
+          </div>
+        </div>
+
+        <!-- Main Two-Column Operational Split -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Left: Active Tasks & Pending Approvals -->
+          <div class="lg:col-span-7 space-y-4">
+            ${pendingApprovals.length > 0 ? `
+              <div class="rounded-xl border border-amber-500/40 bg-amber-950/15 p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 text-amber-300 font-display font-semibold text-xs">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    Action Required: Pending Permission Requests (${pendingApprovals.length})
+                  </div>
+                  <button onclick="setActiveView('approvals')" class="text-[11px] font-mono text-amber-300 underline">Open Approval Centre</button>
+                </div>
+                ${pendingApprovals.map(app => `
+                  <div class="p-2.5 rounded-lg bg-carbon/90 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="text-xs font-medium text-white truncate">${escapeHtml(app.operation)}</div>
+                      <div class="text-[11px] font-mono text-amber-300 truncate">${escapeHtml(app.commandOrPath)}</div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <button onclick="resolveApproval('${app.id}', 'approve')" class="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-[11px] font-medium text-white">Approve</button>
+                      <button onclick="resolveApproval('${app.id}', 'reject')" class="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-[11px] font-medium text-white">Reject</button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            <div class="hairline-card rounded-xl p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="font-display font-semibold text-sm text-white flex items-center gap-2">
+                  <i data-lucide="cpu" class="w-4 h-4 text-indigo-400"></i>
+                  Active &amp; Recent Agent Tasks
+                </h3>
+                <button onclick="setActiveView('agents')" class="text-xs text-indigo-400 hover:underline">All Tasks &amp; Traces →</button>
+              </div>
+              <div class="space-y-2.5">
+                ${state.tasks.slice(0, 3).map(t => `
+                  <div class="p-3 rounded-lg bg-surface/70 border border-hairline space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-mono ${
+                        t.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' :
+                        t.status === 'awaiting_approval' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' :
+                        'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                      }">${escapeHtml(t.status.toUpperCase())}</span>
+                      <span class="text-[11px] font-mono text-zinc-400">${escapeHtml(t.project)} • ${t.durationMs}ms</span>
+                    </div>
+                    <div class="text-xs text-zinc-100 font-medium">${escapeHtml(t.prompt)}</div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono text-zinc-400">
+                      <span>${escapeHtml(t.agentName)} (${escapeHtml(t.modelId)})</span>
+                      <span>${t.totalTokens ? t.totalTokens + ' tokens' : ''}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Recent Activity Timeline & File Modifications -->
+          <div class="lg:col-span-5 space-y-4">
+            <div class="hairline-card rounded-xl p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="font-display font-semibold text-sm text-white flex items-center gap-2">
+                  <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+                  Live Activity Stream
+                </h3>
+                <button onclick="setActiveView('activity')" class="text-xs text-indigo-400 hover:underline">Full Timeline →</button>
+              </div>
+              <div class="space-y-2">
+                ${recentEvents.map(e => `
+                  <div class="p-2.5 rounded-lg bg-surface/50 border border-hairline flex items-start gap-2.5">
+                    <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                      e.status === 'completed' ? 'bg-emerald-400' :
+                      e.status === 'pending_approval' ? 'bg-amber-400' : 'bg-indigo-400'
+                    }"></span>
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs text-zinc-200 leading-snug">${escapeHtml(e.description)}</div>
+                      <div class="text-[10px] font-mono text-zinc-400 mt-0.5">
+                        ${escapeHtml(e.project)} • ${escapeHtml(e.category)} • ${escapeHtml(e.timestamp.slice(11, 19))}
+                      </div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="hairline-card rounded-xl p-4 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <h3 class="font-display font-semibold text-sm text-white flex items-center gap-2">
+                  <i data-lucide="file-diff" class="w-4 h-4 text-purple-400"></i>
+                  Recent File Changes &amp; Origin
+                </h3>
+                <button onclick="setActiveView('projects')" class="text-xs text-indigo-400 hover:underline">Open Explorer →</button>
+              </div>
+              ${Object.entries(ws.files).map(([fname, fmeta]) => `
+                <div onclick="openFileInProjects('${fname}')" class="p-2.5 rounded-lg bg-surface/60 hover:bg-surfaceHover border border-hairline flex items-center justify-between gap-2 cursor-pointer transition">
+                  <div class="min-w-0">
+                    <div class="text-xs font-mono text-zinc-100 truncate">${escapeHtml(fname)}</div>
+                    <div class="text-[10px] text-zinc-400">Modified ${escapeHtml(fmeta.modifiedAt)}</div>
+                  </div>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-mono shrink-0 ${
+                    fmeta.origin === 'agent'
+                      ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                      : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                  }">${fmeta.origin === 'agent' ? 'Agent Edit' : 'Manual Edit'}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // VIEW 2: AI MODEL MANAGEMENT (Section 5)
+    // =========================================================================
+    function renderModels() {
+      return `
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 class="font-display font-semibold text-base text-white">AI Model Discovery &amp; Selection</h2>
+              <p class="text-xs text-zinc-400">
+                Discovered dynamically via <code class="font-mono text-indigo-300">vscode.lm.selectChatModels()</code>, ACP <code class="font-mono text-indigo-300">models/list</code>, and <code class="font-mono text-indigo-300">agy</code> CLI.
+              </p>
+            </div>
+            <span class="px-2.5 py-1 rounded-md text-xs font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+              Active: ${escapeHtml(state.selectedModelId)}
+            </span>
+          </div>
+
+          <div class="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 leading-relaxed">
+            <strong>Integration Honesty Boundary:</strong> Selecting a model below directly configures all tasks launched via the <strong>Agent Client Protocol (ACP)</strong> and <strong>Antigravity CLI</strong>. Because the standalone Antigravity IDE does not expose a public extension API to mutate an already-open native webview chat dropdown mid-thread, switching the native IDE panel dropdown requires the <strong>Remote Desktop</strong> tab.
+          </div>
+
+          <!-- Model Cards Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            ${state.models.map(m => {
+              const isSelected = m.id === state.selectedModelId;
+              return `
+                <div class="p-4 rounded-xl border transition ${
+                  isSelected
+                    ? 'bg-indigo-950/25 border-indigo-500/60'
+                    : m.available
+                      ? 'bg-surface/60 border-hairline hover:border-zinc-700'
+                      : 'bg-surface/25 border-hairline opacity-65'
+                } space-y-3">
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <div class="font-display font-semibold text-sm text-white flex items-center gap-2">
+                        ${escapeHtml(m.name)}
+                      </div>
+                      <div class="text-[11px] font-mono text-zinc-400 mt-0.5">${escapeHtml(m.provider)}</div>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono ${
+                      !m.available
+                        ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                        : isSelected
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-zinc-800 text-zinc-300'
+                    }">
+                      ${!m.available ? 'UNAVAILABLE' : isSelected ? 'ACTIVE MODEL' : 'AVAILABLE'}
+                    </span>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-2 text-[11px] font-mono text-zinc-300 bg-carbon/80 p-2.5 rounded-lg border border-hairline">
+                    <div>Context: <span class="text-indigo-300">${escapeHtml(m.contextWindow)}</span></div>
+                    <div>Avg Latency: <span class="text-cyan-300">${m.latencyMs ? m.latencyMs + ' ms' : 'Offline'}</span></div>
+                  </div>
+
+                  <div class="flex flex-wrap gap-1.5">
+                    ${m.capabilities.map(c => `<span class="px-2 py-0.5 rounded bg-surface border border-hairline text-[10px] font-mono text-zinc-300">${escapeHtml(c)}</span>`).join('')}
+                  </div>
+
+                  <div class="text-[11px] text-zinc-400">
+                    ${m.available ? escapeHtml(m.scopeSupport) : `<span class="text-rose-300">${escapeHtml(m.unavailableReason)}</span>`}
+                  </div>
+
+                  <div class="pt-1">
+                    ${m.available ? `
+                      <button onclick="selectModel('${m.id}')" class="w-full py-1.5 px-3 rounded-lg text-xs font-medium transition ${
+                        isSelected
+                          ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                      }">
+                        ${isSelected ? '✓ Currently Selected for Tasks' : 'Select Model for ACP & CLI Tasks'}
+                      </button>
+                    ` : `
+                      <button disabled class="w-full py-1.5 px-3 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-500 cursor-not-allowed">
+                        Endpoint Offline
+                      </button>
+                    `}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Model Parameters & Selection History -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="hairline-card rounded-xl p-4 space-y-3">
+            <h3 class="font-display font-semibold text-sm text-white">Model Generation Parameters</h3>
+            <div class="space-y-3 text-xs">
+              <div>
+                <div class="flex justify-between font-mono text-[11px] text-zinc-300 mb-1">
+                  <label for="param-temp">Temperature</label>
+                  <span id="param-temp-val">${state.modelConfig.temperature}</span>
+                </div>
+                <input id="param-temp" type="range" min="0" max="1" step="0.05" value="${state.modelConfig.temperature}" oninput="updateModelParam('temperature', this.value)" class="w-full accent-indigo-500" />
+              </div>
+              <div>
+                <label for="param-tokens" class="block font-mono text-[11px] text-zinc-300 mb-1">Max Output Tokens</label>
+                <select id="param-tokens" onchange="updateModelParam('maxOutputTokens', Number(this.value))" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-200">
+                  <option value="4096" ${state.modelConfig.maxOutputTokens === 4096 ? 'selected' : ''}>4,096 tokens</option>
+                  <option value="8192" ${state.modelConfig.maxOutputTokens === 8192 ? 'selected' : ''}>8,192 tokens</option>
+                  <option value="16384" ${state.modelConfig.maxOutputTokens === 16384 ? 'selected' : ''}>16,384 tokens</option>
+                </select>
+              </div>
+              <div>
+                <label for="param-thinking" class="block font-mono text-[11px] text-zinc-300 mb-1">Reasoning / Thinking Budget</label>
+                <select id="param-thinking" onchange="updateModelParam('thinkingBudget', this.value)" class="w-full bg-surface border border-hairline rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-200">
+                  <option value="low" ${state.modelConfig.thinkingBudget === 'low' ? 'selected' : ''}>Low (Fastest)</option>
+                  <option value="medium" ${state.modelConfig.thinkingBudget === 'medium' ? 'selected' : ''}>Medium (Balanced)</option>
+                  <option value="high" ${state.modelConfig.thinkingBudget === 'high' ? 'selected' : ''}>High (Deep Architecture Analysis)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="hairline-card rounded-xl p-4 space-y-3">
+            <h3 class="font-display font-semibold text-sm text-white">Model Selection Audit Log</h3>
+            <div class="space-y-2 max-h-52 overflow-y-auto">
+              ${state.modelHistory.map(h => `
+                <div class="p-2.5 rounded-lg bg-surface/60 border border-hairline text-xs">
+                  <div class="font-mono text-indigo-300 font-medium">${escapeHtml(h.modelId)}</div>
+                  <div class="text-[11px] text-zinc-400 mt-0.5">${escapeHtml(h.scope)} • ${escapeHtml(h.timestamp.slice(0, 19))}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function selectModel(modelId) {
+      const target = state.models.find(m => m.id === modelId);
+      if (!target || !target.available) return;
+      state.selectedModelId = modelId;
+      state.modelHistory.unshift({
+        timestamp: new Date().toISOString(),
+        modelId,
+        scope: 'ACP Session & Task Composer',
+        actor: 'Mohammed Nihal (Mobile)'
+      });
+      recordActivity({
+        project: state.activeWorkspace,
+        modelId,
+        category: 'model_selection',
+        description: `Selected model "${target.name}" (${modelId}) for subsequent tasks`,
+        status: 'completed'
+      });
+      showToast('Model Selected', `${target.name} is now active for ACP & CLI tasks`, 'indigo');
+      renderAll();
+    }
+
+    function updateModelParam(key, val) {
+      state.modelConfig[key] = key === 'temperature' ? Number(val) : val;
+      const label = document.getElementById('param-temp-val');
+      if (label && key === 'temperature') label.textContent = String(val);
+      recordActivity({
+        project: state.activeWorkspace,
+        modelId: state.selectedModelId,
+        category: 'model_config',
+        description: `Updated model parameter ${key} = ${val}`,
+        status: 'completed'
+      });
+      saveState();
+    }
+
+    // =========================================================================
+    // VIEW 3: AI AGENT MANAGEMENT & EXECUTION TRACES (Section 6 & 7)
+    // =========================================================================
+    function renderAgents() {
+      return `
+        <!-- Agent Discovery & Selection -->
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 class="font-display font-semibold text-base text-white">AI Agent Management &amp; Control</h2>
+              <p class="text-xs text-zinc-400">
+                Explicitly distinguishes <strong>1. Native Antigravity IDE Agents</strong>, <strong>2. ACP-Connected Agents</strong>, and <strong>3. External CLI Agents</strong>.
+              </p>
+            </div>
+            <button onclick="openQuickTaskModal()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white flex items-center gap-1.5 self-start">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+              New Agent Task
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            ${state.agents.map(ag => {
+              const selected = ag.id === state.selectedAgentId;
+              return `
+                <div class="p-3.5 rounded-xl border transition flex flex-col justify-between ${
+                  selected ? 'bg-indigo-950/25 border-indigo-500/60' : 'bg-surface/60 border-hairline'
+                } space-y-3">
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between gap-1">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                        ${escapeHtml(ag.originBadge)}
+                      </span>
+                      <span class="text-[10px] font-mono text-emerald-400 uppercase">${escapeHtml(ag.status)}</span>
+                    </div>
+                    <div class="font-display font-semibold text-sm text-white">${escapeHtml(ag.name)}</div>
+                    <p class="text-xs text-zinc-400 leading-relaxed">${escapeHtml(ag.description)}</p>
+                    <div class="pt-1">
+                      <div class="text-[10px] font-mono uppercase text-zinc-400 mb-1">Exposed Tools</div>
+                      <div class="flex flex-wrap gap-1">
+                        ${ag.tools.map(t => `<span class="px-1.5 py-0.5 rounded bg-carbon border border-hairline text-[10px] font-mono text-zinc-300">${escapeHtml(t)}</span>`).join('')}
+                      </div>
+                    </div>
+                  </div>
+                  <button onclick="selectAgent('${ag.id}')" class="w-full py-1.5 px-3 rounded-lg text-xs font-medium transition ${
+                    selected
+                      ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-surface hover:bg-surfaceHover border border-hairline text-zinc-100'
+                  }">
+                    ${selected ? '✓ Active Agent' : 'Select Agent'}
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <!-- Execution Traces & Task Control -->
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <h3 class="font-display font-semibold text-sm text-white flex items-center gap-2">
+            <i data-lucide="git-commit-horizontal" class="w-4 h-4 text-cyan-400"></i>
+            Observable Agent Execution Traces (No Fabricated Hidden Reasoning)
+          </h3>
+          <div class="space-y-3">
+            ${state.tasks.map(task => `
+              <div class="p-3.5 rounded-xl bg-surface/60 border border-hairline space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-hairline pb-2.5">
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded text-[10px] font-mono ${
+                        task.status === 'completed' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' :
+                        task.status === 'awaiting_approval' ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' :
+                        task.status === 'cancelled' ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30' :
+                        'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                      }">${escapeHtml(task.status.toUpperCase())}</span>
+                      <span class="text-xs font-mono text-indigo-300">${escapeHtml(task.id)}</span>
+                      <span class="text-xs font-mono text-zinc-400">• ${escapeHtml(task.project)}</span>
+                    </div>
+                    <div class="text-xs font-medium text-white mt-1.5">${escapeHtml(task.prompt)}</div>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    ${task.status !== 'completed' && task.status !== 'cancelled' ? `
+                      <button onclick="steerTask('${task.id}')" class="px-2.5 py-1 rounded bg-surface hover:bg-surfaceHover border border-hairline text-[11px] text-zinc-200">Steer / Follow-up</button>
+                      <button onclick="cancelTask('${task.id}')" class="px-2.5 py-1 rounded bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-[11px] text-rose-300">Cancel</button>
+                    ` : ''}
+                  </div>
+                </div>
+
+                <!-- Telemetry Metadata Bar -->
+                <div class="flex flex-wrap items-center gap-3 text-[11px] font-mono text-zinc-400">
+                  <span>Agent: <strong class="text-zinc-200">${escapeHtml(task.agentName)}</strong></span>
+                  <span>Origin: <strong class="text-indigo-300">${escapeHtml(task.agentOrigin)}</strong></span>
+                  <span>Model: <strong class="text-cyan-300">${escapeHtml(task.modelId)}</strong></span>
+                  <span>Duration: <strong class="text-zinc-200">${task.durationMs}ms</strong></span>
+                  <span>Tokens: <strong class="text-zinc-200">${task.totalTokens ? `${task.inputTokens} in / ${task.outputTokens} out (${task.totalTokens} total)` : 'N/A'}</strong></span>
+                </div>
+
+                <!-- Step-by-Step Trace Pipeline -->
+                <div class="space-y-1.5 pt-1">
+                  ${task.trace.map(step => `
+                    <div class="flex items-start gap-2.5 text-xs p-2 rounded-lg bg-carbon/80 border border-hairline">
+                      <span class="px-1.5 py-0.5 rounded bg-surface font-mono text-[10px] text-indigo-300 shrink-0">#${step.step}</span>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-2">
+                          <span class="font-medium text-zinc-200">${escapeHtml(step.event)}</span>
+                          <span class="font-mono text-[10px] text-zinc-400">${escapeHtml(step.time)}</span>
+                        </div>
+                        <div class="font-mono text-[11px] text-zinc-400 mt-0.5 break-all">${escapeHtml(step.detail)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function selectAgent(agentId) {
+      const ag = state.agents.find(a => a.id === agentId);
+      if (!ag) return;
+      state.selectedAgentId = agentId;
+      recordActivity({
+        project: state.activeWorkspace,
+        agentId: ag.id,
+        modelId: state.selectedModelId,
+        category: 'agent_selection',
+        description: `Selected agent "${ag.name}" (${ag.originBadge})`,
+        status: 'completed'
+      });
+      showToast('Agent Selected', `${ag.name} will handle subsequent tasks`, 'indigo');
+      renderAll();
+    }
+
+    function steerTask(taskId) {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      const now = new Date().toTimeString().slice(0, 8);
+      task.trace.push({
+        step: task.trace.length + 1,
+        event: 'Steer instruction injected',
+        time: now,
+        status: 'completed',
+        detail: 'Operator sent mid-execution steering constraint: preserve backward compatibility on exported types.'
+      });
+      recordActivity({
+        project: task.project,
+        agentId: task.agentId,
+        modelId: task.modelId,
+        category: 'agent_steer',
+        description: `Injected mid-run steering guidance into ${task.id}`,
+        status: 'completed'
+      });
+      showToast('Task Steered', `Appended steering instruction to ${task.id}`, 'indigo');
+      renderAll();
+    }
+
+    function cancelTask(taskId) {
+      const task = state.tasks.find(t => t.id === taskId);
+      if (!task) return;
+      task.status = 'cancelled';
+      task.trace.push({
+        step: task.trace.length + 1,
+        event: 'Task cancelled',
+        time: new Date().toTimeString().slice(0, 8),
+        status: 'cancelled',
+        detail: 'Execution aborted via Mobile Command Centre.'
+      });
+      recordActivity({
+        project: task.project,
+        agentId: task.agentId,
+        modelId: task.modelId,
+        category: 'task_cancellation',
+        description: `Cancelled running task ${task.id}`,
+        status: 'cancelled'
+      });
+      showToast('Task Cancelled', `Task ${task.id} was terminated`, 'rose');
+      renderAll();
+    }
+
+    // =========================================================================
+    // VIEW 4: PROJECTS, FILE EXPLORER, CODE EDITOR & DIFFS (Section 9 & 12)
+    // =========================================================================
+    function renderProjects() {
+      const ws = state.workspaces[state.activeWorkspace];
+      const filesList = Object.keys(ws.files);
+      if (!ws.selectedFile || !ws.files[ws.selectedFile]) {
+        ws.selectedFile = filesList[0];
+      }
+      const activeFileObj = ws.files[ws.selectedFile];
+
+      return `
+        <!-- Workspace Switcher Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+          ${Object.values(state.workspaces).map(w => {
+            const isCurr = w.name === state.activeWorkspace;
+            return `
+              <div onclick="switchWorkspace('${w.name}')" class="p-3.5 rounded-xl border cursor-pointer transition ${
+                isCurr ? 'bg-indigo-950/25 border-indigo-500/60' : 'hairline-card'
+              }">
+                <div class="flex items-center justify-between">
+                  <span class="font-display font-semibold text-sm text-white">${escapeHtml(w.name)}</span>
+                  <span class="px-2 py-0.5 rounded text-[10px] font-mono ${isCurr ? 'bg-emerald-500/20 text-emerald-300' : 'bg-surface text-zinc-400'}">
+                    ${isCurr ? 'ACTIVE' : 'SWITCH'}
+                  </span>
+                </div>
+                <div class="text-[11px] font-mono text-zinc-400 mt-1 truncate">${escapeHtml(w.path)}</div>
+                <div class="text-[11px] text-zinc-300 mt-1.5 line-clamp-1">${escapeHtml(w.description)}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- File Explorer & Live Code Editor -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Directory Tree -->
+          <div class="lg:col-span-4 hairline-card rounded-xl p-3.5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="font-display font-semibold text-xs text-white uppercase tracking-wider">Workspace Files</span>
+              <button onclick="createNewFilePrompt()" class="px-2 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-[11px] font-mono text-indigo-300 flex items-center gap-1">
+                <i data-lucide="file-plus" class="w-3 h-3"></i> + File
+              </button>
+            </div>
+            <div class="space-y-1">
+              ${filesList.map(fname => {
+                const f = ws.files[fname];
+                const selected = fname === ws.selectedFile;
+                return `
+                  <div onclick="selectWorkspaceFile('${fname}')" class="p-2 rounded-lg border flex items-center justify-between gap-2 cursor-pointer transition ${
+                    selected ? 'bg-indigo-500/15 border-indigo-500/40 text-white' : 'bg-surface/50 border-transparent hover:border-hairline text-zinc-300'
+                  }">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <i data-lucide="file-code" class="w-3.5 h-3.5 text-indigo-400 shrink-0"></i>
+                      <span class="text-xs font-mono truncate">${escapeHtml(fname)}</span>
+                    </div>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0 ${
+                      f.origin === 'agent' ? 'bg-indigo-500/20 text-indigo-300' :
+                      f.origin === 'manual' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-400'
+                    }">${escapeHtml(f.origin)}</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+
+            <!-- Create New File Inline Input -->
+            <div id="new-file-box" class="hidden pt-2 border-t border-hairline space-y-2">
+              <input id="new-file-name-input" type="text" placeholder="src/utils/helper.ts" class="w-full bg-surface border border-hairline rounded px-2.5 py-1.5 text-xs font-mono text-zinc-100" />
+              <div class="flex justify-end gap-1.5">
+                <button onclick="document.getElementById('new-file-box').classList.add('hidden')" class="px-2 py-1 rounded bg-surface text-[11px] text-zinc-400">Cancel</button>
+                <button onclick="confirmCreateNewFile()" class="px-2.5 py-1 rounded bg-indigo-600 text-[11px] text-white font-medium">Create</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- File Editor & Unified Diff Viewer -->
+          <div class="lg:col-span-8 hairline-card rounded-xl p-4 space-y-3">
+            ${activeFileObj ? `
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-hairline pb-2.5">
+                <div>
+                  <div class="font-mono text-xs font-semibold text-white">${escapeHtml(ws.selectedFile)}</div>
+                  <div class="text-[11px] text-zinc-400">
+                    Last origin: <strong class="text-indigo-300">${escapeHtml(activeFileObj.origin)}</strong>
+                    ${activeFileObj.modifiedBy ? `by ${escapeHtml(activeFileObj.modifiedBy)}` : ''} • ${escapeHtml(activeFileObj.modifiedAt)}
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="saveActiveFileContent()" class="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white flex items-center gap-1">
+                    <i data-lucide="save" class="w-3.5 h-3.5"></i> Save File
+                  </button>
+                  <button onclick="requestDeleteActiveFile()" class="px-2.5 py-1.5 rounded-md bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-1">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Delete
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label for="file-editor-textarea" class="block text-[11px] font-mono text-zinc-400 mb-1">Editable Buffer (UTF-8)</label>
+                <textarea id="file-editor-textarea" rows="10" class="w-full bg-obsidian border border-hairline rounded-lg p-3 font-mono text-xs text-zinc-100 leading-relaxed focus:outline-none focus:border-indigo-500">${escapeHtml(activeFileObj.content)}</textarea>
+              </div>
+
+              <div>
+                <div class="text-[11px] font-mono text-zinc-400 mb-1">Git Unified Diff Preview (HEAD)</div>
+                <pre class="bg-obsidian border border-hairline rounded-lg p-3 font-mono text-[11px] text-cyan-300 overflow-x-auto">${escapeHtml(activeFileObj.diff || 'No uncommitted diff.')}</pre>
+              </div>
+            ` : `<div class="text-xs text-zinc-400">Select a file to inspect or edit.</div>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function openFileInProjects(fname) {
+      const ws = state.workspaces[state.activeWorkspace];
+      if (ws && ws.files[fname]) {
+        ws.selectedFile = fname;
+      }
+      setActiveView('projects');
+    }
+
+    function selectWorkspaceFile(fname) {
+      const ws = state.workspaces[state.activeWorkspace];
+      if (!ws || !ws.files[fname]) return;
+      ws.selectedFile = fname;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'file_read',
+        description: `Read file ${fname} in ${state.activeWorkspace}`,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function saveActiveFileContent() {
+      const ws = state.workspaces[state.activeWorkspace];
+      const textarea = document.getElementById('file-editor-textarea');
+      if (!ws || !ws.selectedFile || !textarea) return;
+      const fileObj = ws.files[ws.selectedFile];
+      fileObj.content = textarea.value;
+      fileObj.origin = 'manual';
+      fileObj.modifiedBy = 'Mohammed Nihal (Mobile)';
+      fileObj.modifiedAt = 'Just now';
+      fileObj.diff = `@@ -1 +1 @@\n+ // Updated manually via Antigravity Mobile (${textarea.value.length} bytes)`;
+
+      if (!ws.gitChanged.some(g => g.path === ws.selectedFile)) {
+        ws.gitChanged.push({ path: ws.selectedFile, status: 'M', staged: false, origin: 'manual' });
+      }
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'file_modified',
+        description: `Saved file ${ws.selectedFile} (origin: manual)`,
+        status: 'completed',
+        details: { path: ws.selectedFile, origin: 'manual', bytes: textarea.value.length }
+      });
+      showToast('File Saved', `Saved ${ws.selectedFile} to workspace`, 'emerald');
+      renderAll();
+    }
+
+    function createNewFilePrompt() {
+      const box = document.getElementById('new-file-box');
+      if (box) box.classList.remove('hidden');
+    }
+
+    function confirmCreateNewFile() {
+      const input = document.getElementById('new-file-name-input');
+      if (!input || !input.value.trim()) return;
+      const fname = input.value.trim();
+      const ws = state.workspaces[state.activeWorkspace];
+      ws.files[fname] = {
+        language: 'typescript',
+        origin: 'manual',
+        modifiedBy: 'Mohammed Nihal (Mobile)',
+        modifiedAt: 'Just now',
+        content: `// Created via Antigravity Mobile\nexport const createdFromMobile = true;\n`,
+        diff: `@@ -0,0 +1,2 @@\n+// Created via Antigravity Mobile`
+      };
+      ws.selectedFile = fname;
+      ws.gitChanged.push({ path: fname, status: 'A', staged: false, origin: 'manual' });
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'file_created',
+        description: `Created new file ${fname} in ${state.activeWorkspace}`,
+        status: 'completed'
+      });
+      showToast('File Created', `Created ${fname}`, 'emerald');
+      renderAll();
+    }
+
+    function requestDeleteActiveFile() {
+      const ws = state.workspaces[state.activeWorkspace];
+      if (!ws || !ws.selectedFile) return;
+      const target = ws.selectedFile;
+      openConfirmModal(
+        'Confirm File Deletion',
+        `Are you sure you want to permanently delete "${target}" from workspace "${ws.name}"?`,
+        () => {
+          delete ws.files[target];
+          ws.selectedFile = Object.keys(ws.files)[0] || null;
+          recordActivity({
+            project: state.activeWorkspace,
+            category: 'file_deleted',
+            description: `Deleted file ${target} after operator confirmation`,
+            status: 'completed'
+          });
+          showToast('File Deleted', `Removed ${target}`, 'rose');
+          renderAll();
+        }
+      );
+    }
+
+    // =========================================================================
+    // VIEW 5: INTERACTIVE REMOTE TERMINAL (Section 10)
+    // =========================================================================
+    function renderTerminal() {
+      const termState = state.terminals;
+      const activeSession = termState.sessions.find(s => s.id === termState.activeSessionId) || termState.sessions[0];
+      const query = (termState.searchQuery || '').toLowerCase();
+      const visibleLines = query
+        ? activeSession.lines.filter(l => l.toLowerCase().includes(query))
+        : activeSession.lines;
+
+      return `
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-3">
+            <div class="flex items-center gap-1.5 overflow-x-auto">
+              ${termState.sessions.map(s => `
+                <button onclick="switchTerminalSession('${s.id}')" class="px-3 py-1.5 rounded-lg text-xs font-mono border transition ${
+                  s.id === activeSession.id
+                    ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/40'
+                    : 'bg-surface text-zinc-400 border-hairline hover:text-zinc-200'
+                }">
+                  ${escapeHtml(s.name)} (PID ${s.pid})
+                </button>
+              `).join('')}
+              <button onclick="createNewTerminalSession()" class="px-2.5 py-1.5 rounded-lg bg-surface hover:bg-surfaceHover border border-hairline text-xs font-mono text-emerald-400">
+                + New PTY
+              </button>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <input type="text" value="${escapeHtml(termState.searchQuery)}" oninput="filterTerminalOutput(this.value)" placeholder="Filter output..." class="bg-surface border border-hairline rounded-md px-2.5 py-1 text-xs font-mono text-zinc-200 w-36" />
+              <button onclick="copyTerminalOutput()" class="px-2.5 py-1 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-300">Copy</button>
+              <button onclick="sendSigintTerminal()" class="px-2.5 py-1 rounded-md bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-mono text-rose-300">SIGINT (^C)</button>
+            </div>
+          </div>
+
+          <!-- Terminal Viewport -->
+          <div class="bg-obsidian border border-hairline rounded-xl p-3.5 font-mono text-xs text-zinc-200 space-y-1 max-h-80 overflow-y-auto" id="terminal-output-box">
+            ${visibleLines.map(line => `<div class="leading-relaxed break-all ${line.includes('%') ? 'text-emerald-400 font-semibold' : line.includes('✓') ? 'text-cyan-300' : 'text-zinc-300'}">${escapeHtml(line)}</div>`).join('')}
+          </div>
+
+          <!-- Command Input Bar -->
+          <div class="flex gap-2">
+            <span class="px-2.5 py-2 rounded-lg bg-surface border border-hairline font-mono text-xs text-emerald-400 select-none">$</span>
+            <input id="terminal-cmd-input" type="text" onkeydown="if(event.key==='Enter') executeTerminalCommand()" placeholder="Enter shell command (e.g. git status, agy models, pytest, or test rm -rf policy)..." class="flex-1 bg-surface border border-hairline rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-indigo-500" />
+            <button onclick="executeTerminalCommand()" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white">Run</button>
+          </div>
+
+          <!-- Quick Command History Chips -->
+          <div class="flex flex-wrap items-center gap-1.5 pt-1">
+            <span class="text-[10px] font-mono uppercase text-zinc-400">History &amp; Policy Probes:</span>
+            ${['git status -sb', 'agy models --list', 'npm run test', 'rm -rf /tmp/restricted_test'].map(cmd => `
+              <button onclick="runQuickTerminalChip('${cmd}')" class="px-2 py-0.5 rounded bg-surface hover:bg-surfaceHover border border-hairline font-mono text-[11px] text-zinc-300">
+                ${escapeHtml(cmd)}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function switchTerminalSession(sessionId) {
+      state.terminals.activeSessionId = sessionId;
+      saveState();
+      renderAll();
+    }
+
+    function createNewTerminalSession() {
+      const idx = state.terminals.sessions.length + 1;
+      const newId = 'term_' + Date.now().toString().slice(-4);
+      const pid = 5200 + idx * 37;
+      state.terminals.sessions.push({
+        id: newId,
+        name: `zsh-pty-${idx}`,
+        project: state.activeWorkspace,
+        cwd: state.workspaces[state.activeWorkspace].path,
+        pid,
+        status: 'running',
+        history: [],
+        lines: [
+          `nihal@MacBook-Pro ${state.activeWorkspace} % # Allocated interactive PTY session (PID ${pid})`
+        ]
+      });
+      state.terminals.activeSessionId = newId;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'terminal',
+        description: `Created interactive PTY session zsh-pty-${idx} (PID ${pid})`,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function filterTerminalOutput(q) {
+      state.terminals.searchQuery = q;
+      renderAll();
+    }
+
+    function runQuickTerminalChip(cmd) {
+      const input = document.getElementById('terminal-cmd-input');
+      if (input) {
+        input.value = cmd;
+        executeTerminalCommand();
+      }
+    }
+
+    function executeTerminalCommand() {
+      const input = document.getElementById('terminal-cmd-input');
+      if (!input || !input.value.trim()) return;
+      const cmd = redactText(input.value.trim());
+      input.value = '';
+
+      const session = state.terminals.sessions.find(s => s.id === state.terminals.activeSessionId) || state.terminals.sessions[0];
+      const dangerousRegex = /\b(rm\s+-rf|git\s+push\s+.*--force|git\s+reset\s+--hard|sudo|mkfs)\b/i;
+
+      if (dangerousRegex.test(cmd)) {
+        const aprId = 'apr_' + Date.now().toString().slice(-4);
+        state.approvals.unshift({
+          id: aprId,
+          createdAt: new Date().toISOString(),
+          project: state.activeWorkspace,
+          taskId: null,
+          agentId: 'mobile-pty-operator',
+          category: 'terminal_command',
+          operation: `Terminal session ${session.name} attempted restricted command`,
+          commandOrPath: cmd,
+          riskLevel: 'critical',
+          status: 'pending'
+        });
+        session.lines.push(`nihal@MacBook-Pro ${state.activeWorkspace} % ${cmd}`);
+        session.lines.push(`[SECURITY POLICY] Command "${cmd}" blocked pending explicit approval (${aprId}) in Approval Centre.`);
+        recordActivity({
+          project: state.activeWorkspace,
+          category: 'permission_request',
+          description: `Restricted terminal command "${cmd}" held for approval (${aprId})`,
+          status: 'pending_approval'
+        });
+        showToast('Approval Required', `Dangerous command held in Approval Centre (${aprId})`, 'amber');
+        renderAll();
+        return;
+      }
+
+      session.history.push(cmd);
+      session.lines.push(`nihal@MacBook-Pro ${state.activeWorkspace} % ${cmd}`);
+      if (cmd.startsWith('agy models')) {
+        session.lines.push('Discovered Antigravity Models: gemini-2.5-pro-antigravity, gemini-2.5-flash-antigravity, claude-3-7-sonnet-acp');
+      } else if (cmd.startsWith('git status')) {
+        const ws = state.workspaces[state.activeWorkspace];
+        session.lines.push(`On branch ${ws.branch} — ${ws.gitChanged.length} modified file(s)`);
+      } else {
+        session.lines.push(`[PTY ${session.pid}] Executed "${cmd}" (exit code 0)`);
+      }
+
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'terminal_command',
+        description: `Executed command in ${session.name}: ${cmd}`,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function sendSigintTerminal() {
+      const session = state.terminals.sessions.find(s => s.id === state.terminals.activeSessionId) || state.terminals.sessions[0];
+      session.lines.push('^C [SIGINT delivered to foreground process group]');
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'terminal',
+        description: `Sent SIGINT (^C) to PTY session ${session.name} (PID ${session.pid})`,
+        status: 'completed'
+      });
+      showToast('SIGINT Sent', `Interrupted process in ${session.name}`, 'amber');
+      renderAll();
+    }
+
+    function copyTerminalOutput() {
+      const session = state.terminals.sessions.find(s => s.id === state.terminals.activeSessionId) || state.terminals.sessions[0];
+      const text = session.lines.join('\n');
+      try {
+        navigator.clipboard.writeText(text);
+      } catch {}
+      showToast('Copied Output', `Copied ${session.lines.length} lines from ${session.name}`, 'emerald');
+    }
+
+    // =========================================================================
+    // VIEW 6: GIT REPOSITORY MANAGEMENT (Section 11)
+    // =========================================================================
+    function renderGit() {
+      const ws = state.workspaces[state.activeWorkspace];
+
+      return `
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Left: Branch & Working Tree Status -->
+          <div class="lg:col-span-7 hairline-card rounded-xl p-4 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-3">
+              <div>
+                <h2 class="font-display font-semibold text-base text-white">Git Repository — ${escapeHtml(ws.name)}</h2>
+                <p class="text-xs font-mono text-zinc-400">${escapeHtml(ws.path)}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <select onchange="switchGitBranch(this.value)" aria-label="Git Branch" class="bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs font-mono text-indigo-300">
+                  ${ws.branches.map(b => `<option value="${b}" ${b === ws.branch ? 'selected' : ''}>branch: ${b}</option>`).join('')}
+                </select>
+                <button onclick="gitPullRepo()" class="px-2.5 py-1.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-200">Pull</button>
+                <button onclick="gitPushRepo()" class="px-2.5 py-1.5 rounded-md bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-xs text-indigo-300">Push</button>
+              </div>
+            </div>
+
+            <!-- Changed Files List -->
+            <div class="space-y-2">
+              <div class="text-xs font-medium text-zinc-300">Working Tree &amp; Staged Changes (${ws.gitChanged.length})</div>
+              ${ws.gitChanged.length === 0 ? `
+                <div class="p-3 rounded-lg bg-surface/40 border border-hairline text-xs text-zinc-400">Working tree clean — no uncommitted changes.</div>
+              ` : ws.gitChanged.map(item => `
+                <div class="p-2.5 rounded-lg bg-surface/60 border border-hairline flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="px-1.5 py-0.5 rounded font-mono text-[10px] ${item.staged ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}">
+                      ${item.staged ? 'STAGED' : 'MODIFIED'}
+                    </span>
+                    <span class="font-mono text-xs text-zinc-100 truncate">${escapeHtml(item.path)}</span>
+                  </div>
+                  <button onclick="toggleGitStage('${item.path}')" class="px-2.5 py-1 rounded bg-carbon hover:bg-surfaceHover border border-hairline text-[11px] font-mono text-zinc-200 shrink-0">
+                    ${item.staged ? 'Unstage' : 'Stage +'}
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+
+            <!-- Commit Composer -->
+            <div class="pt-2 border-t border-hairline space-y-2">
+              <label for="git-commit-msg" class="block text-xs text-zinc-400">Commit Staged Changes</label>
+              <div class="flex gap-2">
+                <input id="git-commit-msg" type="text" placeholder="feat(swath): calibrate off-nadir VIIRS footprint radius..." class="flex-1 bg-surface border border-hairline rounded-lg px-3 py-2 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500" />
+                <button onclick="commitGitChanges()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white shrink-0">
+                  Commit
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Commit History -->
+          <div class="lg:col-span-5 hairline-card rounded-xl p-4 space-y-3">
+            <h3 class="font-display font-semibold text-sm text-white flex items-center gap-2">
+              <i data-lucide="history" class="w-4 h-4 text-purple-400"></i>
+              Recent Commit Log (${escapeHtml(ws.branch)})
+            </h3>
+            <div class="space-y-2">
+              ${ws.gitCommits.map(c => `
+                <div class="p-3 rounded-lg bg-surface/60 border border-hairline space-y-1">
+                  <div class="flex items-center justify-between text-[11px] font-mono">
+                    <span class="text-indigo-300 font-semibold">${escapeHtml(c.shortHash)}</span>
+                    <span class="text-zinc-400">${escapeHtml(c.date)}</span>
+                  </div>
+                  <div class="text-xs text-zinc-100 font-medium">${escapeHtml(c.subject)}</div>
+                  <div class="text-[10px] text-zinc-400">Author: ${escapeHtml(c.author)}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleGitStage(filePath) {
+      const ws = state.workspaces[state.activeWorkspace];
+      const item = ws.gitChanged.find(f => f.path === filePath);
+      if (!item) return;
+      item.staged = !item.staged;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'git',
+        description: `${item.staged ? 'Staged' : 'Unstaged'} ${filePath} in ${ws.name}`,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function commitGitChanges() {
+      const ws = state.workspaces[state.activeWorkspace];
+      const msgInput = document.getElementById('git-commit-msg');
+      if (!msgInput || !msgInput.value.trim()) {
+        showToast('Commit Message Required', 'Enter a commit message before committing.', 'amber');
+        return;
+      }
+      const message = msgInput.value.trim();
+      const shortHash = Math.random().toString(16).slice(2, 9);
+      ws.gitCommits.unshift({
+        shortHash,
+        author: 'Mohammed Nihal',
+        date: 'Just now',
+        subject: message
+      });
+      ws.gitChanged = ws.gitChanged.filter(f => !f.staged);
+      msgInput.value = '';
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'git',
+        description: `Committed ${shortHash} on ${ws.branch}: ${message}`,
+        status: 'completed'
+      });
+      showToast('Git Commit Created', `[${ws.branch} ${shortHash}] ${message}`, 'emerald');
+      renderAll();
+    }
+
+    function switchGitBranch(branch) {
+      const ws = state.workspaces[state.activeWorkspace];
+      ws.branch = branch;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'git',
+        description: `Switched Git branch to ${branch} in ${ws.name}`,
+        status: 'completed'
+      });
+      showToast('Branch Switched', `Checked out ${branch}`, 'indigo');
+      renderAll();
+    }
+
+    function gitPullRepo() {
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'git',
+        description: `Executed git pull --ff-only on ${state.activeWorkspace} (Already up to date)`,
+        status: 'completed'
+      });
+      showToast('Git Pull Complete', 'Fast-forwarded to origin HEAD', 'emerald');
+      renderAll();
+    }
+
+    function gitPushRepo() {
+      const ws = state.workspaces[state.activeWorkspace];
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'git',
+        description: `Pushed branch ${ws.branch} to origin/${ws.branch}`,
+        status: 'completed'
+      });
+      showToast('Git Push Complete', `Pushed ${ws.branch} to origin`, 'indigo');
+      renderAll();
+    }
+
+    // =========================================================================
+    // VIEW 7: APPROVAL CENTRE (Section 13)
+    // =========================================================================
+    function renderApprovals() {
+      return `
+        <div class="hairline-card rounded-xl p-4 space-y-4">
+          <div class="flex items-center justify-between border-b border-hairline pb-3">
+            <div>
+              <h2 class="font-display font-semibold text-base text-white">Centralized Permission &amp; Approval Centre</h2>
+              <p class="text-xs text-zinc-400">Intercepts ACP <code class="font-mono text-indigo-300">permission/request</code> frames, dangerous PTY commands, and supervised file operations.</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-md font-mono text-xs bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              Never Auto-Approves Destructive Ops
+            </span>
+          </div>
+
+          <div class="space-y-3">
+            ${state.approvals.map(app => `
+              <div class="p-4 rounded-xl border ${
+                app.status === 'pending'
+                  ? 'bg-amber-950/15 border-amber-500/40'
+                  : app.status === 'approved'
+                    ? 'bg-emerald-950/10 border-emerald-500/30'
+                    : 'bg-rose-950/10 border-rose-500/30'
+              } space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase ${
+                      app.status === 'pending' ? 'bg-amber-500/20 text-amber-300' :
+                      app.status === 'approved' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                    }">${escapeHtml(app.status)}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                      Risk: ${escapeHtml(app.riskLevel)}
+                    </span>
+                    <span class="text-xs font-mono text-zinc-400">${escapeHtml(app.id)} • ${escapeHtml(app.project)}</span>
+                  </div>
+                  <span class="text-[11px] font-mono text-zinc-400">${escapeHtml(app.createdAt.slice(11, 19))}</span>
+                </div>
+
+                <div class="text-sm font-medium text-white">${escapeHtml(app.operation)}</div>
+                <div class="p-2.5 rounded-lg bg-obsidian border border-hairline font-mono text-xs text-amber-300 break-all">
+                  ${escapeHtml(app.commandOrPath)}
+                </div>
+
+                ${app.status === 'pending' ? `
+                  <div class="flex items-center justify-end gap-2 pt-1">
+                    <button onclick="resolveApproval('${app.id}', 'reject')" class="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-xs font-medium text-white">
+                      Reject Operation
+                    </button>
+                    <button onclick="resolveApproval('${app.id}', 'approve')" class="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-medium text-white">
+                      Approve &amp; Execute
+                    </button>
+                  </div>
+                ` : `
+                  <div class="text-[11px] font-mono text-zinc-400">
+                    Resolution recorded at ${escapeHtml((app.resolvedAt || '').slice(11, 19))}
+                  </div>
+                `}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function resolveApproval(appId, decision) {
+      const app = state.approvals.find(a => a.id === appId);
+      if (!app || app.status !== 'pending') return;
+      app.status = decision === 'approve' ? 'approved' : 'rejected';
+      app.resolvedAt = new Date().toISOString();
+
+      if (app.taskId) {
+        const linkedTask = state.tasks.find(t => t.id === app.taskId);
+        if (linkedTask) {
+          linkedTask.status = decision === 'approve' ? 'completed' : 'cancelled';
+          linkedTask.trace.push({
+            step: linkedTask.trace.length + 1,
+            event: decision === 'approve' ? 'Permission approved' : 'Permission rejected',
+            time: new Date().toTimeString().slice(0, 8),
+            status: linkedTask.status,
+            detail: `Mobile operator ${app.status} ${app.commandOrPath}`
+          });
+        }
+      }
+
+      recordActivity({
+        project: app.project,
+        agentId: app.agentId,
+        category: decision === 'approve' ? 'approval_granted' : 'approval_rejected',
+        description: `${decision === 'approve' ? 'Approved' : 'Rejected'} ${app.operation}: ${app.commandOrPath}`,
+        status: app.status
+      });
+
+      showToast(
+        decision === 'approve' ? 'Permission Approved' : 'Permission Rejected',
+        `${app.commandOrPath} was ${app.status}`,
+        decision === 'approve' ? 'emerald' : 'rose'
+      );
+      renderAll();
+    }
+
+    // =========================================================================
+    // VIEW 8: UNIFIED ACTIVITY TIMELINE (Section 7)
+    // =========================================================================
+    function renderActivity() {
+      const f = state.activityFilters;
+      const filtered = state.activityEvents.filter(e => {
+        if (f.project !== 'all' && e.project !== f.project) return false;
+        if (f.category !== 'all' && e.category !== f.category) return false;
+        if (f.status !== 'all' && e.status !== f.status) return false;
+        if (f.search && !e.description.toLowerCase().includes(f.search.toLowerCase())) return false;
+        return true;
+      });
+
+      return `
+        <div class="hairline-card rounded-xl p-4 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-hairline pb-3">
+            <div>
+              <h2 class="font-display font-semibold text-base text-white">Unified Real-Time Activity Timeline</h2>
+              <p class="text-xs text-zinc-400">Backed by SQLite WAL persistence in Companion Service with automatic credential redaction.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button onclick="exportActivityJson()" class="px-2.5 py-1.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs font-mono text-zinc-200 flex items-center gap-1">
+                <i data-lucide="download" class="w-3.5 h-3.5 text-indigo-400"></i> Export JSON
+              </button>
+              <button onclick="exportActivityCsv()" class="px-2.5 py-1.5 rounded-md bg-surface hover:bg-surfaceHover border border-hairline text-xs font-mono text-zinc-200 flex items-center gap-1">
+                <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-emerald-400"></i> Export CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters Bar -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <input type="text" value="${escapeHtml(f.search)}" oninput="setActivityFilter('search', this.value)" placeholder="Search events, files, tasks..." class="bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs text-zinc-100" />
+            <select onchange="setActivityFilter('project', this.value)" aria-label="Filter by Project" class="bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs font-mono text-zinc-200">
+              <option value="all" ${f.project === 'all' ? 'selected' : ''}>All Projects</option>
+              ${Object.keys(state.workspaces).map(k => `<option value="${k}" ${f.project === k ? 'selected' : ''}>${k}</option>`).join('')}
+              <option value="global" ${f.project === 'global' ? 'selected' : ''}>global</option>
+            </select>
+            <select onchange="setActivityFilter('category', this.value)" aria-label="Filter by Category" class="bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs font-mono text-zinc-200">
+              <option value="all" ${f.category === 'all' ? 'selected' : ''}>All Categories</option>
+              ${['task_completion', 'file_modified', 'file_created', 'terminal_command', 'git', 'model_selection', 'permission_request', 'ide_event', 'security'].map(c =>
+                `<option value="${c}" ${f.category === c ? 'selected' : ''}>${c}</option>`
+              ).join('')}
+            </select>
+            <select onchange="setActivityFilter('status', this.value)" aria-label="Filter by Status" class="bg-surface border border-hairline rounded-md px-2.5 py-1.5 text-xs font-mono text-zinc-200">
+              <option value="all" ${f.status === 'all' ? 'selected' : ''}>All Statuses</option>
+              <option value="completed" ${f.status === 'completed' ? 'selected' : ''}>completed</option>
+              <option value="pending_approval" ${f.status === 'pending_approval' ? 'selected' : ''}>pending_approval</option>
+              <option value="cancelled" ${f.status === 'cancelled' ? 'selected' : ''}>cancelled</option>
+            </select>
+          </div>
+
+          <!-- Events List -->
+          <div class="space-y-2">
+            ${filtered.map(e => `
+              <details class="group rounded-lg bg-surface/60 border border-hairline overflow-hidden">
+                <summary class="p-3 cursor-pointer list-none flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-surfaceHover/60">
+                  <div class="flex items-start gap-2.5 min-w-0">
+                    <span class="w-2 h-2 rounded-full mt-1.5 shrink-0 ${
+                      e.status === 'completed' ? 'bg-emerald-400' :
+                      e.status === 'pending_approval' ? 'bg-amber-400' : 'bg-rose-400'
+                    }"></span>
+                    <div class="min-w-0">
+                      <div class="text-xs font-medium text-zinc-100">${escapeHtml(e.description)}</div>
+                      <div class="flex flex-wrap items-center gap-2 text-[10px] font-mono text-zinc-400 mt-0.5">
+                        <span>${escapeHtml(e.timestamp.slice(0, 19))}</span>
+                        <span>•</span>
+                        <span class="text-indigo-300">${escapeHtml(e.project)}</span>
+                        <span>•</span>
+                        <span class="px-1.5 py-0.2 rounded bg-carbon border border-hairline">${escapeHtml(e.category)}</span>
+                        ${e.modelId ? `<span>• Model: ${escapeHtml(e.modelId)}</span>` : ''}
+                        ${e.durationMs ? `<span>• ${e.durationMs}ms</span>` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] font-mono text-zinc-400 shrink-0">Inspect JSON ▾</span>
+                </summary>
+                <div class="px-3 pb-3 pt-1 border-t border-hairline bg-obsidian">
+                  <pre class="font-mono text-[11px] text-cyan-300 overflow-x-auto">${escapeHtml(JSON.stringify(e, null, 2))}</pre>
+                </div>
+              </details>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function setActivityFilter(key, val) {
+      state.activityFilters[key] = val;
+      renderAll();
+    }
+
+    function exportActivityJson() {
+      const blob = new Blob([JSON.stringify(state.activityEvents, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'antigravity-activity-export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exported JSON', `Downloaded ${state.activityEvents.length} activity events`, 'indigo');
+    }
+
+    function exportActivityCsv() {
+      const cols = ['id', 'timestamp', 'project', 'agentId', 'modelId', 'category', 'status', 'durationMs', 'description'];
+      const lines = [cols.join(',')];
+      for (const e of state.activityEvents) {
+        lines.push(cols.map(c => `"${String(e[c] ?? '').replace(/"/g, '""')}"`).join(','));
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'antigravity-activity-export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exported CSV', `Downloaded ${state.activityEvents.length} rows as CSV`, 'emerald');
+    }
+
+    // =========================================================================
+    // VIEW 9: FULL REMOTE DESKTOP CONTROL (Section 14)
+    // =========================================================================
+    function renderDesktop() {
+      const d = state.desktop;
+      return `
+        <div class="hairline-card rounded-xl p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-hairline pb-3">
+            <div>
+              <h2 class="font-display font-semibold text-base text-white">Remote Desktop Stream &amp; Native IDE UI Control</h2>
+              <p class="text-xs text-zinc-400">
+                Essential for interacting directly with native Antigravity IDE webviews, switching windows, and clicking native controls not exposed over ACP.
+              </p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <select onchange="switchDesktopWindow(this.value)" aria-label="Switch Host Window" class="bg-surface border border-hairline rounded-md px-2.5 py-1 text-xs font-mono text-zinc-200">
+                ${[
+                  'Google Antigravity IDE — cleo-fire-platform',
+                  'Google Antigravity IDE — Native Agent Thread',
+                  'macOS Terminal — agy daemon',
+                  'Chrome — localhost:3000 (CLEO 3D Globe)'
+                ].map(w => `<option value="${w}" ${w === d.activeWindow ? 'selected' : ''}>Window: ${w}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- Interactive Live Desktop Canvas -->
+          <div class="relative rounded-xl overflow-hidden border border-indigo-500/40 bg-obsidian shadow-2xl">
+            <canvas id="remote-desktop-canvas" width="960" height="520" onclick="handleDesktopCanvasClick(event)" class="w-full h-auto block cursor-crosshair"></canvas>
+          </div>
+
+          <!-- On-Screen Keyboard & HID Shortcut Bar -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="text-[11px] font-mono text-zinc-400">Send Shortcut:</span>
+              ${['Cmd+P (Quick Open)', 'Cmd+Shift+P (Palette)', 'Cmd+S (Save)', 'Cmd+B (Sidebar)', 'Switch Native Model Dropdown', 'Esc'].map(key => `
+                <button onclick="sendDesktopKey('${key}')" class="px-2.5 py-1 rounded bg-surface hover:bg-surfaceHover border border-hairline font-mono text-[11px] text-zinc-200">
+                  ${escapeHtml(key)}
+                </button>
+              `).join('')}
+            </div>
+            <div class="flex items-center gap-1.5">
+              <input id="desktop-type-input" type="text" placeholder="Type text to host keyboard..." class="bg-surface border border-hairline rounded-md px-2.5 py-1 text-xs text-zinc-100" />
+              <button onclick="sendDesktopText()" class="px-3 py-1 rounded-md bg-indigo-600 hover:bg-indigo-500 text-xs text-white">Send Keys</button>
+            </div>
+          </div>
+
+          <!-- HID Input Telemetry -->
+          <div class="p-2.5 rounded-lg bg-surface/60 border border-hairline flex items-center justify-between text-[11px] font-mono text-zinc-400">
+            <span>Last HID Event: <strong class="text-indigo-300">${escapeHtml(d.lastAction)}</strong></span>
+            <span>Pointer: (${d.cursorX}, ${d.cursorY})</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function drawDesktopCanvas() {
+      const canvas = document.getElementById('remote-desktop-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      // Background IDE window frame
+      ctx.fillStyle = '#09090B';
+      ctx.fillRect(0, 0, w, h);
+
+      // Top macOS / IDE Window Bar
+      ctx.fillStyle = '#141720';
+      ctx.fillRect(0, 0, w, 34);
+      ctx.fillStyle = '#EF4444'; ctx.beginPath(); ctx.arc(18, 17, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#F59E0B'; ctx.beginPath(); ctx.arc(34, 17, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#10B981'; ctx.beginPath(); ctx.arc(50, 17, 5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#A1A1AA';
+      ctx.font = '12px JetBrains Mono, monospace';
+      ctx.fillText(state.desktop.activeWindow, 80, 21);
+
+      // Left Activity & File Tree Pane
+      ctx.fillStyle = '#0E1015';
+      ctx.fillRect(0, 34, 210, h - 34);
+      ctx.strokeStyle = '#222634';
+      ctx.strokeRect(0, 34, 210, h - 34);
+
+      ctx.fillStyle = '#818CF8';
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.fillText('EXPLORER: ' + state.activeWorkspace.toUpperCase(), 14, 58);
+
+      const ws = state.workspaces[state.activeWorkspace];
+      Object.keys(ws.files).forEach((fname, idx) => {
+        ctx.fillStyle = idx === 0 ? '#E4E4E7' : '#71717A';
+        ctx.font = '11px JetBrains Mono, monospace';
+        ctx.fillText('• ' + fname.slice(0, 24), 16, 84 + idx * 24);
+      });
+
+      // Center Code Editor Pane
+      ctx.fillStyle = '#09090B';
+      ctx.fillRect(210, 34, 470, h - 140);
+      ctx.fillStyle = '#27272A';
+      ctx.font = '11px JetBrains Mono, monospace';
+      const activeFile = ws.files[ws.selectedFile] || Object.values(ws.files)[0];
+      const codeLines = (activeFile?.content || '').split('\n').slice(0, 12);
+      codeLines.forEach((line, i) => {
+        ctx.fillStyle = '#52525B';
+        ctx.fillText(String(i + 1).padStart(2, ' '), 222, 64 + i * 20);
+        ctx.fillStyle = line.includes('export') ? '#818CF8' : line.includes('//') ? '#6EE7B7' : '#E4E4E7';
+        ctx.fillText(line.slice(0, 56), 250, 64 + i * 20);
+      });
+
+      // Bottom Integrated Terminal inside IDE
+      ctx.fillStyle = '#0D0F14';
+      ctx.fillRect(210, h - 106, 470, 106);
+      ctx.strokeStyle = '#222634';
+      ctx.strokeRect(210, h - 106, 470, 106);
+      ctx.fillStyle = '#34D399';
+      ctx.fillText('TERMINAL (agy daemon connected) — ' + ws.branch, 224, h - 84);
+      ctx.fillStyle = '#A1A1AA';
+      ctx.fillText('$ agy watch --workspace ' + state.activeWorkspace, 224, h - 60);
+      ctx.fillText('✓ Streaming telemetry to Antigravity Mobile Companion (:8787)', 224, h - 38);
+
+      // Right Native Antigravity Agent Panel
+      ctx.fillStyle = '#11141C';
+      ctx.fillRect(680, 34, w - 680, h - 34);
+      ctx.strokeStyle = '#222634';
+      ctx.strokeRect(680, 34, w - 680, h - 34);
+
+      ctx.fillStyle = '#C084FC';
+      ctx.font = 'bold 11px Inter, sans-serif';
+      ctx.fillText('ANTIGRAVITY NATIVE AGENT PANEL', 696, 58);
+
+      // Model Dropdown inside Native IDE Panel
+      ctx.fillStyle = '#1A1E2B';
+      ctx.fillRect(696, 70, 248, 28);
+      ctx.strokeStyle = '#6366F1';
+      ctx.strokeRect(696, 70, 248, 28);
+      ctx.fillStyle = '#E4E4E7';
+      ctx.font = '11px JetBrains Mono, monospace';
+      ctx.fillText('Model: ' + state.selectedModelId.slice(0, 25) + ' ▾', 706, 88);
+
+      ctx.fillStyle = '#A1A1AA';
+      ctx.fillText('Tap anywhere on screen to send', 696, 126);
+      ctx.fillText('remote pointer click & focus.', 696, 144);
+
+      // Draw Remote Cursor Target
+      const cx = state.desktop.cursorX;
+      const cy = state.desktop.cursorY;
+      ctx.strokeStyle = '#06B6D4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#6366F1';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function handleDesktopCanvasClick(evt) {
+      const canvas = document.getElementById('remote-desktop-canvas');
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = Math.round((evt.clientX - rect.left) * scaleX);
+      const y = Math.round((evt.clientY - rect.top) * scaleY);
+
+      state.desktop.cursorX = x;
+      state.desktop.cursorY = y;
+      state.desktop.lastAction = `Left click dispatched at (${x}, ${y}) in "${state.desktop.activeWindow}"`;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'desktop_input',
+        description: state.desktop.lastAction,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function switchDesktopWindow(win) {
+      state.desktop.activeWindow = win;
+      state.desktop.lastAction = `Switched active desktop window to "${win}"`;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'desktop_input',
+        description: state.desktop.lastAction,
+        status: 'completed'
+      });
+      renderAll();
+    }
+
+    function sendDesktopKey(shortcut) {
+      state.desktop.lastAction = `Sent key combination: ${shortcut}`;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'desktop_input',
+        description: `Remote Desktop shortcut sent: ${shortcut}`,
+        status: 'completed'
+      });
+      showToast('Desktop Key Sent', shortcut, 'indigo');
+      renderAll();
+    }
+
+    function sendDesktopText() {
+      const input = document.getElementById('desktop-type-input');
+      if (!input || !input.value) return;
+      const txt = input.value;
+      input.value = '';
+      state.desktop.lastAction = `Typed "${txt}" into focused IDE window`;
+      recordActivity({
+        project: state.activeWorkspace,
+        category: 'desktop_input',
+        description: `Remote Desktop keystrokes sent (${txt.length} chars)`,
+        status: 'completed'
+      });
+      showToast('Keystrokes Dispatched', `Typed "${txt}" on host`, 'emerald');
+      renderAll();
+    }
+
+    // =========================================================================
+    // VIEW 10: SETTINGS, ALWAYS-READY MODE & CAPABILITY MATRIX (Section 15, 17, 18)
+    // =========================================================================
+    function renderSettings() {
+      const c = state.companionStatus;
+      return `
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Always-Ready Mode & Security Controls -->
+          <div class="lg:col-span-5 hairline-card rounded-xl p-4 space-y-4">
+            <h2 class="font-display font-semibold text-base text-white">Always-Ready Mode &amp; Security Policy</h2>
+            <p class="text-xs text-zinc-400">
+              Monitors local Antigravity IDE process health and auto-reconnects when the host laptop is powered on. Does not claim remote control when the host machine is powered off.
+            </p>
+
+            <div class="space-y-2.5 text-xs">
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-surface border border-hairline cursor-pointer">
+                <span>Start Companion Service on Boot (<code class="font-mono text-indigo-300">launchd</code> / <code class="font-mono text-indigo-300">systemd</code>)</span>
+                <input type="checkbox" ${c.autoStartEnabled ? 'checked' : ''} onchange="toggleSetting('autoStartEnabled', this.checked)" class="accent-indigo-500" />
+              </label>
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-surface border border-hairline cursor-pointer">
+                <span>Auto-Launch Antigravity IDE if Disconnected</span>
+                <input type="checkbox" ${c.autoLaunchIde ? 'checked' : ''} onchange="toggleSetting('autoLaunchIde', this.checked)" class="accent-indigo-500" />
+              </label>
+              <label class="flex items-center justify-between p-2.5 rounded-lg bg-surface border border-hairline cursor-pointer">
+                <span>Push &amp; Browser Notifications for Approvals / Completion</span>
+                <input type="checkbox" ${c.notificationsEnabled ? 'checked' : ''} onchange="toggleSetting('notificationsEnabled', this.checked)" class="accent-indigo-500" />
+              </label>
+            </div>
+
+            <div class="pt-2 border-t border-hairline flex flex-wrap gap-2">
+              <button onclick="openQrModal()" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white flex items-center gap-1.5">
+                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Pair New Mobile Device
+              </button>
+              <button onclick="resetDemoState()" class="px-3 py-1.5 rounded-lg bg-surface hover:bg-surfaceHover border border-hairline text-xs text-zinc-300">
+                Reset State to Defaults
+              </button>
+            </div>
+          </div>
+
+          <!-- Technical Capability Validation Matrix (Section 18) -->
+          <div class="lg:col-span-7 hairline-card rounded-xl p-4 space-y-3">
+            <h3 class="font-display font-semibold text-base text-white">Phase 1 Capability Validation Matrix</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="border-b border-hairline text-[11px] font-mono text-zinc-400">
+                    <th class="py-2 pr-3">Feature</th>
+                    <th class="py-2 pr-3">Classification</th>
+                    <th class="py-2">Verified Integration Mechanism</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-hairline">
+                  ${state.capabilityMatrix.map(row => `
+                    <tr>
+                      <td class="py-2 pr-3 font-medium text-zinc-100">${escapeHtml(row.feature)}</td>
+                      <td class="py-2 pr-3 font-mono text-[11px] text-indigo-300 whitespace-nowrap">${escapeHtml(row.classification)}</td>
+                      <td class="py-2 text-zinc-400">${escapeHtml(row.mechanism)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleSetting(key, val) {
+      state.companionStatus[key] = val;
+      recordActivity({
+        project: 'global',
+        category: 'system',
+        description: `Updated Always-Ready setting ${key} = ${val}`,
+        status: 'completed'
+      });
+      showToast('Setting Updated', `${key} set to ${val}`, 'indigo');
+      saveState();
+    }
+
+    function resetDemoState() {
+      openConfirmModal(
+        'Reset Local State',
+        'Reset all customized files, tasks, and activity logs back to the initial baseline state?',
+        () => {
+          state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+          saveState();
+          showToast('State Reset', 'Restored initial baseline workspace state', 'indigo');
+          renderAll();
+        }
+      );
+    }
+
+    // =========================================================================
+    // TASK SUBMISSION & MODALS
+    // =========================================================================
+    function openQuickTaskModal() {
+      const modal = document.getElementById('task-modal');
+      if (!modal) return;
+      const mSel = document.getElementById('modal-task-model');
+      const aSel = document.getElementById('modal-task-agent');
+      const pSel = document.getElementById('modal-task-project');
+
+      if (mSel) {
+        mSel.innerHTML = state.models.filter(m => m.available).map(m =>
+          `<option value="${m.id}" ${m.id === state.selectedModelId ? 'selected' : ''}>${m.name}</option>`
+        ).join('');
+      }
+      if (aSel) {
+        aSel.innerHTML = state.agents.map(a =>
+          `<option value="${a.id}" ${a.id === state.selectedAgentId ? 'selected' : ''}>${a.name} (${a.originBadge})</option>`
+        ).join('');
+      }
+      if (pSel) {
+        pSel.innerHTML = Object.keys(state.workspaces).map(k =>
+          `<option value="${k}" ${k === state.activeWorkspace ? 'selected' : ''}>${k}</option>`
+        ).join('');
+      }
+      modal.classList.remove('hidden');
+    }
+
+    function closeQuickTaskModal() {
+      const modal = document.getElementById('task-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function submitInlineTask() {
+      const input = document.getElementById('quick-composer-input');
+      if (!input || !input.value.trim()) {
+        openQuickTaskModal();
+        return;
+      }
+      dispatchNewTask({
+        prompt: input.value.trim(),
+        modelId: state.selectedModelId,
+        agentId: state.selectedAgentId,
+        project: state.activeWorkspace,
+        executionMode: state.selectedExecutionMode
+      });
+      input.value = '';
+    }
+
+    function submitModalTask() {
+      const promptEl = document.getElementById('modal-task-prompt');
+      const modelEl = document.getElementById('modal-task-model');
+      const agentEl = document.getElementById('modal-task-agent');
+      const projEl = document.getElementById('modal-task-project');
+      const modeEl = document.getElementById('modal-task-mode');
+
+      if (!promptEl || !promptEl.value.trim()) {
+        showToast('Prompt Required', 'Enter instructions for the agent before dispatching.', 'amber');
+        return;
+      }
+      dispatchNewTask({
+        prompt: promptEl.value.trim(),
+        modelId: modelEl.value,
+        agentId: agentEl.value,
+        project: projEl.value,
+        executionMode: modeEl.value
+      });
+      promptEl.value = '';
+      closeQuickTaskModal();
+    }
+
+    function dispatchNewTask({ prompt, modelId, agentId, project, executionMode }) {
+      state.selectedModelId = modelId;
+      state.selectedAgentId = agentId;
+      state.selectedExecutionMode = executionMode;
+      const agent = state.agents.find(a => a.id === agentId) || state.agents[0];
+      const nowTime = new Date().toTimeString().slice(0, 8);
+      const taskId = 'task_' + Date.now().toString().slice(-6);
+      const ws = state.workspaces[project] || state.workspaces[state.activeWorkspace];
+      const targetFile = Object.keys(ws.files)[0];
+
+      const trace = [
+        { step: 1, event: 'Prompt submitted', time: nowTime, status: 'completed', detail: prompt },
+        { step: 2, event: 'Model selected', time: nowTime, status: 'completed', detail: `${modelId} (temp=${state.modelConfig.temperature})` },
+        { step: 3, event: 'Agent started', time: nowTime, status: 'completed', detail: `${agent.name} [${executionMode}]` },
+        { step: 4, event: 'Tool invoked', time: nowTime, status: 'completed', detail: `fs.readFile("${targetFile}")` }
+      ];
+
+      let status = 'completed';
+      if (executionMode === 'supervised_approval') {
+        status = 'awaiting_approval';
+        const aprId = 'apr_' + Date.now().toString().slice(-4);
+        state.approvals.unshift({
+          id: aprId,
+          createdAt: new Date().toISOString(),
+          project,
+          taskId,
+          agentId: agent.id,
+          category: 'file_operation',
+          operation: `${agent.name} requests supervised permission to edit ${targetFile}`,
+          commandOrPath: `${project}/${targetFile}`,
+          riskLevel: 'medium',
+          status: 'pending'
+        });
+        trace.push({
+          step: 5,
+          event: 'Permission requested',
+          time: nowTime,
+          status: 'pending_approval',
+          detail: `Held for mobile approval (${aprId}) before modifying ${targetFile}`
+        });
+      } else {
+        trace.push({
+          step: 5,
+          event: 'File modified',
+          time: nowTime,
+          status: 'completed',
+          detail: `Applied agent patch to ${targetFile} [origin: agent]`
+        });
+        trace.push({
+          step: 6,
+          event: 'Task completed',
+          time: nowTime,
+          status: 'completed',
+          detail: 'Verified 0 TypeScript / linter diagnostics errors.'
+        });
+        if (ws.files[targetFile]) {
+          ws.files[targetFile].origin = 'agent';
+          ws.files[targetFile].modifiedBy = agent.id;
+          ws.files[targetFile].modifiedAt = 'Just now';
+        }
+      }
+
+      const newTask = {
+        id: taskId,
+        createdAt: new Date().toISOString(),
+        project,
+        prompt,
+        agentId: agent.id,
+        agentName: agent.name,
+        agentOrigin: agent.originBadge,
+        modelId,
+        executionMode,
+        status,
+        durationMs: 1640,
+        inputTokens: 1920,
+        outputTokens: 430,
+        totalTokens: 2350,
+        trace
+      };
+
+      state.tasks.unshift(newTask);
+      recordActivity({
+        project,
+        agentId: agent.id,
+        modelId,
+        category: status === 'completed' ? 'task_completion' : 'permission_request',
+        description: `Dispatched ${taskId} to ${agent.name}: "${prompt.slice(0, 60)}"`,
+        status: status === 'completed' ? 'completed' : 'pending_approval'
+      });
+
+      showToast('Task Dispatched', `${agent.name} running with ${modelId}`, 'indigo');
+      renderAll();
+    }
+
+    // QR Pairing Modal
+    function openQrModal() {
+      const modal = document.getElementById('qr-modal');
+      if (modal) {
+        modal.classList.remove('hidden');
+        regenerateQrCode();
+      }
+    }
+
+    function closeQrModal() {
+      const modal = document.getElementById('qr-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function regenerateQrCode() {
+      const code = 'PAIR-' + Math.floor(100 + Math.random() * 900) + '-' + Math.floor(100 + Math.random() * 900);
+      const label = document.getElementById('qr-code-digits');
+      if (label) label.textContent = code;
+
+      const canvas = document.getElementById('qr-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#09090B';
+
+      // Deterministic-looking matrix pattern for QR preview
+      const size = 8;
+      for (let r = 1; r < 19; r++) {
+        for (let c = 1; c < 19; c++) {
+          const isCorner = (r < 6 && c < 6) || (r < 6 && c > 12) || (r > 12 && c < 6);
+          if (isCorner || ((r * 17 + c * 31 + code.charCodeAt(5)) % 3 === 0)) {
+            ctx.fillRect(c * size, r * size, size - 1, size - 1);
+          }
+        }
+      }
+    }
+
+    function simulatePairSuccess() {
+      const ep = document.getElementById('companion-endpoint-input')?.value || state.companionStatus.tailscaleIp;
+      state.companionStatus.tailscaleIp = ep;
+      recordActivity({
+        project: 'global',
+        category: 'security',
+        description: `Paired mobile session via QR code to ${ep}`,
+        status: 'completed'
+      });
+      closeQrModal();
+      showToast('Device Paired', `Authenticated encrypted session with ${ep}`, 'emerald');
+      renderAll();
+    }
+
+    // Confirmation Modal
+    let pendingConfirmAction = null;
+    function openConfirmModal(title, body, onAccept) {
+      document.getElementById('confirm-modal-title').textContent = title;
+      document.getElementById('confirm-modal-body').textContent = body;
+      pendingConfirmAction = onAccept;
+      document.getElementById('confirm-modal').classList.remove('hidden');
+    }
+
+    function closeConfirmModal() {
+      pendingConfirmAction = null;
+      document.getElementById('confirm-modal').classList.add('hidden');
+    }
+
+    document.getElementById('confirm-modal-accept').addEventListener('click', () => {
+      const fn = pendingConfirmAction;
+      closeConfirmModal();
+      if (typeof fn === 'function') fn();
+    });
+
+    // =========================================================================
+    // MASTER RENDER LOOP
+    // =========================================================================
+    function renderAll() {
+      renderNavigation();
+      const container = document.getElementById('main-view-container');
+      if (!container) return;
+
+      switch (state.activeView) {
+        case 'overview':
+          container.innerHTML = renderOverview();
+          break;
+        case 'models':
+          container.innerHTML = renderModels();
+          break;
+        case 'agents':
+          container.innerHTML = renderAgents();
+          break;
+        case 'projects':
+          container.innerHTML = renderProjects();
+          break;
+        case 'terminal':
+          container.innerHTML = renderTerminal();
+          break;
+        case 'git':
+          container.innerHTML = renderGit();
+          break;
+        case 'approvals':
+          container.innerHTML = renderApprovals();
+          break;
+        case 'activity':
+          container.innerHTML = renderActivity();
+          break;
+        case 'desktop':
+          container.innerHTML = renderDesktop();
+          drawDesktopCanvas();
+          break;
+        case 'settings':
+          container.innerHTML = renderSettings();
+          break;
+        default:
+          container.innerHTML = renderOverview();
+      }
+
+      if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+    });
+  </script>
+</body>
+</html>

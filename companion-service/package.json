@@ -1,0 +1,18 @@
+{
+  "name": "@antigravity-mobile/companion-service",
+  "version": "1.0.0",
+  "description": "Local Companion Service for Google Antigravity IDE Mobile Control Centre",
+  "type": "module",
+  "main": "src/server.mjs",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "tunnel:cf": "cloudflared tunnel --url http://127.0.0.1:8787",
+    "tunnel:ts": "tailscale serve --bg 8787",
+    "tunnel:ngrok": "ngrok http 8787",
+    "discover": "node ../scripts/discover-env.mjs",
+    "test": "node test/integration.test.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

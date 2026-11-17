@@ -1,0 +1,115 @@
+{
+  "discoveredAt": "2026-11-17T16:46:05.594Z",
+  "os": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "hostname": "NIHALS-PC",
+    "uptimeSeconds": 1198373,
+    "totalMemMb": 16111,
+    "freeMemMb": 1154
+  },
+  "ide": {
+    "targetProduct": "Google Antigravity IDE (Standalone VS Code-based IDE)",
+    "binaryPath": null,
+    "vscodeFallbackBinaryPath": "C:\\Users\\nihal\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code",
+    "version": null,
+    "configDirectories": [
+      "C:\\Users\\nihal\\.antigravity"
+    ],
+    "extensionDirectories": [
+      "C:\\Users\\nihal\\.antigravity\\extensions",
+      "C:\\Users\\nihal\\.vscode\\extensions"
+    ],
+    "cliAvailable": false,
+    "agyDaemonDetected": false
+  },
+  "runtimes": {
+    "node": "v23.0.0",
+    "git": null,
+    "python3": null,
+    "sqliteEngine": "python3:sqlite3"
+  },
+  "workspaces": [
+    "C:\\Users\\nihal\\OneDrive\\Desktop\\antigravity-mobile"
+  ],
+  "desktopCompatibility": {
+    "supported": true,
+    "tools": {
+      "macScreenCapture": false,
+      "macOsascript": false,
+      "linuxXdotool": false,
+      "linuxFfmpeg": true,
+      "vncServer": false
+    },
+    "mode": "Linux FFmpeg/X11 Frame Stream + HID Bridge"
+  },
+  "capabilityMatrix": [
+    {
+      "id": "workspace_files",
+      "feature": "Workspace & File Management (CRUD, Diff, Origin Tracking)",
+      "classification": "1. Fully supported",
+      "status": "ready"
+    },
+    {
+      "id": "remote_terminal",
+      "feature": "Interactive Remote Terminal (Multi-session, Streaming, Guards)",
+      "classification": "1. Fully supported",
+      "status": "ready"
+    },
+    {
+      "id": "git_management",
+      "feature": "Git Repository Operations (Status, Diff, Stage, Commit, Branch, Push/Pull)",
+      "classification": "1. Fully supported",
+      "status": "ready"
+    },
+    {
+      "id": "activity_sqlite",
+      "feature": "Persistent Activity Timeline & Execution Traces (SQLite + Redaction)",
+      "classification": "1. Fully supported",
+      "status": "ready"
+    },
+    {
+      "id": "ide_telemetry",
+      "feature": "Live IDE Editor, Diagnostics & Save Telemetry",
+      "classification": "3. Requires IDE extension",
+      "status": "extension_ready"
+    },
+    {
+      "id": "model_discovery",
+      "feature": "Dynamic AI Model Discovery (VS Code LM API + ACP + CLI)",
+      "classification": "3. Requires IDE extension",
+      "status": "extension_ready"
+    },
+    {
+      "id": "acp_model_select",
+      "feature": "AI Model & Agent Selection for ACP Tasks",
+      "classification": "4. Requires ACP",
+      "status": "ready"
+    },
+    {
+      "id": "native_model_switch",
+      "feature": "Mid-Session Model Switching Inside Native IDE Side-Panel",
+      "classification": "5. Requires UI automation",
+      "status": "requires_desktop_or_ui_automation"
+    },
+    {
+      "id": "native_chat_attach",
+      "feature": "Direct Mutation of Existing Native IDE Webview Chat Threads",
+      "classification": "2. Partially supported",
+      "status": "acp_isolated_from_native"
+    },
+    {
+      "id": "approval_centre",
+      "feature": "Tool Permission & Dangerous Command Approval Centre",
+      "classification": "4. Requires ACP",
+      "status": "ready"
+    },
+    {
+      "id": "remote_desktop",
+      "feature": "Full Desktop Screen Streaming & Mouse/Keyboard Control",
+      "classification": "1. Fully supported",
+      "status": "ready"
+    }
+  ]
+}
