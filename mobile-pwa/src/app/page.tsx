@@ -7,59 +7,97 @@ import { ConnectionSettingsModal } from '@/components/ConnectionSettingsModal';
 
 export default function Home() {
   const [isOnline, setIsOnline] = useState(false);
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [desktopStatus, setDesktopStatus] = useState<DesktopStatus | null>(null);
   const [activeBaseUrl, setActiveBaseUrl] = useState<string>('');
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
 
   const clientRef = useRef<AntigravityCompanionClient | null>(null);
 
-  const resolveInitialUrl = () => {
+  const resolveInitialConnection = () => {
+    let url = process.env.NEXT_PUBLIC_COMPANION_URL || '';
+    let token: string | null = null;
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const endpointParam = params.get('endpoint');
+      const tokenParam = params.get('token');
+
       if (endpointParam) {
-        const clean = endpointParam.trim().replace(/\/+$/, '');
-        localStorage.setItem('agm_companion_url', clean);
-        return clean;
+        url = endpointParam.trim().replace(/\/+$/, '');
+        localStorage.setItem('agm_companion_url', url);
+      } else {
+        url = localStorage.getItem('agm_companion_url') || url;
       }
-      const stored = localStorage.getItem('agm_companion_url');
-      if (stored) return stored;
-      if (process.env.NEXT_PUBLIC_COMPANION_URL) return process.env.NEXT_PUBLIC_COMPANION_URL;
-      const hostname = window.location.hostname;
-      if (hostname === 'localhost' || hostname === '127.0.0.1') {
-        return 'http://127.0.0.1:8787';
+
+      if (tokenParam) {
+        token = tokenParam.trim();
+        localStorage.setItem('agm_token', token);
+      } else {
+        token = localStorage.getItem('agm_token');
+      }
+
+      // Clean sensitive token from URL bar after persisting locally
+      if (endpointParam || tokenParam) {
+        try {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch {}
+      }
+
+      if (!url) {
+        const hostname = window.location.hostname;
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          url = 'http://127.0.0.1:8787';
+        }
       }
     }
-    return process.env.NEXT_PUBLIC_COMPANION_URL || 'http://127.0.0.1:8787';
+
+    return { url, token };
   };
 
   const getClient = useCallback(() => {
     if (!clientRef.current) {
-      const initialUrl = resolveInitialUrl();
+      const { url, token } = resolveInitialConnection();
       clientRef.current = new AntigravityCompanionClient({
-        baseUrl: initialUrl,
+        baseUrl: url || 'http://127.0.0.1:8787',
+        token: token || undefined,
         onStatusChange: (online) => setIsOnline(online),
       });
-      setActiveBaseUrl(clientRef.current.baseUrl);
+      setActiveBaseUrl(url || '');
+      setAuthToken(token);
     }
     return clientRef.current;
   }, []);
 
   const refreshDesktopStatus = useCallback(async () => {
+    const client = getClient();
+    if (!client.baseUrl) return;
     try {
-      const client = getClient();
-      const [health, desk] = await Promise.all([
-        client.getHealth(),
-        client.getDesktopStatus(),
-      ]);
+      const health = (await client.getHealth()) as any;
       setIsOnline(health.status === 'online');
+      if (health.authRequired && !health.authenticated) {
+        setIsUnauthorized(true);
+        return;
+      }
+      setIsUnauthorized(false);
+      const desk = await client.getDesktopStatus();
       setDesktopStatus(desk);
-    } catch {
-      setIsOnline(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      if (msg.toLowerCase().includes('unauthorized') || msg.includes('401')) {
+        setIsOnline(true);
+        setIsUnauthorized(true);
+      } else {
+        setIsOnline(false);
+      }
     }
   }, [getClient]);
 
-  const handleSaveCompanionUrl = async (rawUrl: string): Promise<{ ok: boolean; message?: string }> => {
+  const handleSaveConnection = async (
+    rawUrl: string,
+    newToken?: string
+  ): Promise<{ ok: boolean; message?: string }> => {
     let cleanUrl = rawUrl.trim().replace(/\/+$/, '').replace(/\/api\/health$/, '');
     if (!cleanUrl) return { ok: false, message: 'URL cannot be empty.' };
 
@@ -83,7 +121,14 @@ export default function Home() {
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(`${cleanUrl}/api/health`, { method: 'GET', signal: controller.signal });
+      const headers: Record<string, string> = {};
+      if (newToken) headers.Authorization = `Bearer ${newToken}`;
+
+      const res = await fetch(`${cleanUrl}/api/health`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
       clearTimeout(timer);
 
       if (!res.ok) {
@@ -91,10 +136,22 @@ export default function Home() {
       }
       const data = await res.json();
       if (data.status === 'online') {
+        if (data.authRequired && !data.authenticated) {
+          return {
+            ok: false,
+            message: 'Session token invalid or missing. Scan the fresh QR code from "AG Mobile QR" in Antigravity IDE.',
+          };
+        }
         localStorage.setItem('agm_companion_url', cleanUrl);
-        getClient().setBaseUrl(cleanUrl);
+        const client = getClient();
+        client.setBaseUrl(cleanUrl);
+        if (newToken !== undefined) {
+          client.setToken(newToken || null);
+          setAuthToken(newToken || null);
+        }
         setActiveBaseUrl(cleanUrl);
         setIsOnline(true);
+        setIsUnauthorized(false);
         refreshDesktopStatus();
         return { ok: true };
       }
@@ -113,6 +170,7 @@ export default function Home() {
   useEffect(() => {
     const client = getClient();
     setActiveBaseUrl(client.baseUrl);
+    setAuthToken(client.getToken());
     refreshDesktopStatus();
 
     const interval = setInterval(() => {
@@ -130,7 +188,9 @@ export default function Home() {
     <>
       <LiveDesktopWorkspace
         baseUrl={activeBaseUrl}
+        authToken={authToken}
         isOnline={isOnline}
+        isUnauthorized={isUnauthorized}
         status={desktopStatus}
         onSendInput={(payload) => getClient().sendDesktopInput(payload)}
         onRefreshStatus={refreshDesktopStatus}
@@ -141,7 +201,8 @@ export default function Home() {
         isOpen={isConnectionModalOpen}
         onClose={() => setIsConnectionModalOpen(false)}
         currentUrl={activeBaseUrl}
-        onSaveUrl={handleSaveCompanionUrl}
+        currentToken={authToken}
+        onSaveConnection={handleSaveConnection}
         isOnline={isOnline}
       />
     </>

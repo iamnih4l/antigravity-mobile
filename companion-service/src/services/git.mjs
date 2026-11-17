@@ -117,7 +117,7 @@ export class GitManager {
     return this.getStatus();
   }
 
-  async commit(message, authorName = 'Mohammed Nihal', authorEmail = 'nihal@antigravity.local') {
+  async commit(message, authorName = 'Antigravity Developer', authorEmail = 'developer@antigravity.local') {
     if (!message || !message.trim()) {
       throw new Error('Commit message is required.');
     }

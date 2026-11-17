@@ -10,7 +10,7 @@ const rootDir = path.resolve(__dirname, '../..');
 
 // Ensure rootDir is an initialized git repository so Git tests exercise real git CLI operations
 if (!fs.existsSync(path.join(rootDir, '.git'))) {
-  execSync('git init && git config user.name "Mohammed Nihal" && git config user.email "nihal@antigravity.local" && git add -A && git commit -m "chore: initial Antigravity Mobile workspace"', {
+  execSync('git init && git config user.name "Antigravity Developer" && git config user.email "developer@antigravity.local" && git add -A && git commit -m "chore: initial Antigravity Mobile workspace"', {
     cwd: rootDir,
     stdio: 'ignore',
   });

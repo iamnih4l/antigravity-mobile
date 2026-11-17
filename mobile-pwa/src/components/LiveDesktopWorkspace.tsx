@@ -19,13 +19,27 @@ import {
   Maximize2,
   Minimize2,
   MousePointerClick,
+  Bell,
+  BellOff,
+  Mic,
+  MicOff,
+  MessageSquare,
+  Code2,
+  Check,
+  OctagonX,
+  Sparkles,
+  PanelLeft,
+  PanelRight,
+  Lock,
 } from 'lucide-react';
 import { DesktopStatus, DesktopWindow } from '@/lib/companion-client';
 import { cn } from '@/lib/utils';
 
 interface LiveDesktopWorkspaceProps {
   baseUrl: string;
+  authToken: string | null;
   isOnline: boolean;
+  isUnauthorized: boolean;
   status: DesktopStatus | null;
   onSendInput: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
   onRefreshStatus: () => void;
@@ -34,10 +48,46 @@ interface LiveDesktopWorkspaceProps {
 
 type TapMode = 'click' | 'double_click' | 'right_click';
 type ZoomLevel = 1 | 2 | 3;
+type ViewMode = 'chat_right' | 'chat_left' | 'ide' | 'full';
+type AgentState = 'idle' | 'working' | 'waiting';
+
+interface CropRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+function playCompletionChime() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const notes = [587.33, 880.0]; // D5 -> A5 crisp pleasant chime
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.14);
+      gain.gain.setValueAtTime(0.001, now + idx * 0.14);
+      gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.14 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.14 + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.14);
+      osc.stop(now + idx * 0.14 + 0.38);
+    });
+  } catch {
+    // Ignore autoplay restriction before user gesture
+  }
+}
 
 export function LiveDesktopWorkspace({
   baseUrl,
+  authToken,
   isOnline,
+  isUnauthorized,
   status,
   onSendInput,
   onRefreshStatus,
@@ -45,25 +95,37 @@ export function LiveDesktopWorkspace({
 }: LiveDesktopWorkspaceProps) {
   const [frameUrl, setFrameUrl] = useState<string | null>(null);
   const [frameError, setFrameError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState(false);
   const [isLive, setIsLive] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('chat_right');
+  const [chatPct, setChatPct] = useState<number>(38);
   const [zoom, setZoom] = useState<ZoomLevel>(1);
   const [tapMode, setTapMode] = useState<TapMode>('click');
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [agentState, setAgentState] = useState<AgentState>('idle');
+  const [showDoneBanner, setShowDoneBanner] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [isCinemaMode, setIsCinemaMode] = useState(false);
   const [promptText, setPromptText] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [clickRipple, setClickRipple] = useState<{ x: number; y: number } | null>(null);
-  const [screenRes, setScreenRes] = useState<{ width: number; height: number }>({
+
+  const [cropRect, setCropRect] = useState<CropRect>({
+    left: 0,
+    top: 0,
     width: status?.screenResolution?.width || 1920,
     height: status?.screenResolution?.height || 1080,
   });
-  const [activeWinTitle, setActiveWinTitle] = useState<string>(status?.activeWindow || 'PC Desktop');
+  const [activeWinTitle, setActiveWinTitle] = useState<string>(status?.activeWindow || 'Antigravity IDE');
 
   const imgRef = useRef<HTMLImageElement>(null);
   const prevBlobRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
+  const prevAgentStateRef = useRef<AgentState>('idle');
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const showToast = useCallback((msg: string) => {
     setToastMsg(msg);
@@ -75,21 +137,39 @@ export function LiveDesktopWorkspace({
     if (!baseUrl || inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      const maxWidth = zoom === 1 ? 1280 : 1920;
-      const quality = zoom === 1 ? 72 : 84;
+      const maxWidth = viewMode.startsWith('chat') ? 960 : zoom === 1 ? 1280 : 1920;
+      const quality = viewMode.startsWith('chat') ? 82 : zoom === 1 ? 74 : 84;
+      const headers: Record<string, string> = {};
+      if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
       const res = await fetch(
-        `${baseUrl.replace(/\/+$/, '')}/api/desktop/frame?maxWidth=${maxWidth}&quality=${quality}&t=${Date.now()}`,
-        { cache: 'no-store' }
+        `${baseUrl.replace(/\/+$/, '')}/api/desktop/frame?mode=${viewMode}&chatPct=${chatPct}&maxWidth=${maxWidth}&quality=${quality}&t=${Date.now()}`,
+        { cache: 'no-store', headers }
       );
+
+      if (res.status === 401) {
+        setAuthError(true);
+        setFrameError('Session token required. Scan the QR code from Antigravity IDE.');
+        return;
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      const w = Number(res.headers.get('X-Screen-Width'));
-      const h = Number(res.headers.get('X-Screen-Height'));
+      setAuthError(false);
+
+      const cl = Number(res.headers.get('X-Crop-Left') || 0);
+      const ct = Number(res.headers.get('X-Crop-Top') || 0);
+      const cw = Number(res.headers.get('X-Crop-Width') || res.headers.get('X-Screen-Width') || 1920);
+      const ch = Number(res.headers.get('X-Crop-Height') || res.headers.get('X-Screen-Height') || 1080);
       const win = res.headers.get('X-Active-Window');
-      if (w > 0 && h > 0) setScreenRes({ width: w, height: h });
+      const nextAgent = (res.headers.get('X-Agent-State') || 'idle') as AgentState;
+
+      if (cw > 0 && ch > 0) {
+        setCropRect({ left: cl, top: ct, width: cw, height: ch });
+      }
       if (win) {
         try {
           setActiveWinTitle(decodeURIComponent(win));
@@ -98,6 +178,21 @@ export function LiveDesktopWorkspace({
         }
       }
 
+      // Trigger alert when agent finishes a working burst!
+      if (prevAgentStateRef.current === 'working' && nextAgent === 'waiting') {
+        setShowDoneBanner(true);
+        if (alertsEnabled) {
+          playCompletionChime();
+          if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+            navigator.vibrate([120, 60, 120]);
+          }
+        }
+      } else if (nextAgent === 'working') {
+        setShowDoneBanner(false);
+      }
+      prevAgentStateRef.current = nextAgent;
+      setAgentState(nextAgent);
+
       const blob = await res.blob();
       const nextUrl = URL.createObjectURL(blob);
       if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
@@ -105,11 +200,11 @@ export function LiveDesktopWorkspace({
       setFrameUrl(nextUrl);
       setFrameError(null);
     } catch (err: unknown) {
-      setFrameError(err instanceof Error ? err.message : 'Unable to capture PC screen');
+      setFrameError(err instanceof Error ? err.message : 'Unable to capture IDE screen');
     } finally {
       inFlightRef.current = false;
     }
-  }, [baseUrl, zoom]);
+  }, [baseUrl, authToken, viewMode, chatPct, zoom, alertsEnabled]);
 
   useEffect(() => {
     fetchFrame();
@@ -125,6 +220,9 @@ export function LiveDesktopWorkspace({
     return () => {
       if (prevBlobRef.current) URL.revokeObjectURL(prevBlobRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
     };
   }, []);
 
@@ -133,16 +231,18 @@ export function LiveDesktopWorkspace({
     setTimeout(() => fetchFrame(), 650);
   };
 
+  // Exact crop-aware tap-to-screen coordinate mapping!
   const handleScreenTap = async (e: React.MouseEvent<HTMLImageElement>) => {
     if (!imgRef.current) return;
     const rect = imgRef.current.getBoundingClientRect();
     const relX = e.clientX - rect.left;
     const relY = e.clientY - rect.top;
-    const x = Math.round((relX / rect.width) * screenRes.width);
-    const y = Math.round((relY / rect.height) * screenRes.height);
+    const x = Math.round(cropRect.left + (relX / rect.width) * cropRect.width);
+    const y = Math.round(cropRect.top + (relY / rect.height) * cropRect.height);
 
     setClickRipple({ x: relX, y: relY });
     setTimeout(() => setClickRipple(null), 550);
+    setShowDoneBanner(false);
 
     try {
       await onSendInput({
@@ -151,19 +251,22 @@ export function LiveDesktopWorkspace({
         y,
         button: tapMode === 'right_click' ? 'right' : 'left',
       });
-      showToast(`${tapMode === 'click' ? 'Clicked' : tapMode === 'double_click' ? 'Double-clicked' : 'Right-clicked'} (${x}, ${y})`);
+      showToast(
+        `${tapMode === 'click' ? 'Tapped' : tapMode === 'double_click' ? 'Double-clicked' : 'Right-clicked'} (${x}, ${y})`
+      );
       quickRefresh();
     } catch (err: unknown) {
       showToast(`Tap failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
+  // Scroll right inside the center of the active crop (chat sidebar when in Chat Focus!)
   const handleScroll = async (delta: number) => {
     try {
       await onSendInput({
         action: 'scroll',
-        x: Math.round(screenRes.width * 0.78),
-        y: Math.round(screenRes.height * 0.5),
+        x: Math.round(cropRect.left + cropRect.width * 0.5),
+        y: Math.round(cropRect.top + cropRect.height * 0.5),
         delta,
       });
       showToast(delta > 0 ? 'Scrolled up' : 'Scrolled down');
@@ -174,6 +277,7 @@ export function LiveDesktopWorkspace({
   };
 
   const handleShortcut = async (combo: string, label: string) => {
+    setShowDoneBanner(false);
     try {
       await onSendInput({ action: 'shortcut', shortcut: combo });
       showToast(`Sent ${label}`);
@@ -186,19 +290,67 @@ export function LiveDesktopWorkspace({
   const handleSendPrompt = async (submit: boolean) => {
     if (!promptText.trim() || isSending) return;
     setIsSending(true);
+    setShowDoneBanner(false);
     try {
       await onSendInput({
         action: 'type_text',
         text: promptText,
         submit,
       });
-      showToast(submit ? 'Sent to Antigravity chat' : 'Pasted on PC');
+      showToast(submit ? 'Sent to Antigravity chat' : 'Pasted into IDE');
       setPromptText('');
       quickRefresh();
     } catch (err: unknown) {
       showToast(`Send failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const toggleVoiceInput = () => {
+    if (typeof window === 'undefined') return;
+    if (isListening) {
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRec =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      showToast('Voice dictation unsupported in this browser — use iPhone keyboard mic.');
+      return;
+    }
+
+    try {
+      const rec = new SpeechRec();
+      rec.lang = 'en-US';
+      rec.interimResults = true;
+      rec.continuous = false;
+
+      rec.onstart = () => {
+        setIsListening(true);
+        showToast('Listening... speak your prompt');
+      };
+      rec.onresult = (evt: any) => {
+        const transcript = Array.from(evt.results)
+          .map((r: any) => r[0]?.transcript || '')
+          .join('');
+        setPromptText(transcript);
+      };
+      rec.onerror = () => {
+        setIsListening(false);
+      };
+      rec.onend = () => {
+        setIsListening(false);
+      };
+      recognitionRef.current = rec;
+      rec.start();
+    } catch {
+      setIsListening(false);
+      showToast('Could not start voice dictation.');
     }
   };
 
@@ -214,9 +366,8 @@ export function LiveDesktopWorkspace({
     }
   };
 
-  const cycleZoom = () => {
-    setZoom((z) => (z === 1 ? 2 : z === 2 ? 3 : 1));
-  };
+  const cycleZoom = () => setZoom((z) => (z === 1 ? 2 : z === 2 ? 3 : 1));
+  const isChatMode = viewMode === 'chat_right' || viewMode === 'chat_left';
 
   const windows = Array.isArray(status?.windows) ? status!.windows! : [];
   const shortcuts = [
@@ -224,6 +375,7 @@ export function LiveDesktopWorkspace({
     { label: 'Esc', key: 'escape' },
     { label: 'Backspace', key: 'backspace' },
     { label: 'Tab', key: 'tab' },
+    { label: 'Ctrl+Enter', key: 'ctrl+enter' },
     { label: 'Ctrl+L (Chat)', key: 'ctrl+l' },
     { label: 'Ctrl+I (Inline)', key: 'ctrl+i' },
     { label: 'Ctrl+Shift+P', key: 'ctrl+shift+p' },
@@ -231,7 +383,8 @@ export function LiveDesktopWorkspace({
     { label: 'Alt+Tab', key: 'alt+tab' },
   ];
 
-  const zoomWidthClass = zoom === 1 ? 'w-full' : zoom === 2 ? 'w-[200%]' : 'w-[300%]';
+  const zoomWidthClass = zoom === 1 ? 'w-full' : zoom === 2 ? 'w-[180%]' : 'w-[260%]';
+  const needsAuth = authError || isUnauthorized;
 
   return (
     <div className="h-[100dvh] w-full flex flex-col bg-[#09090B] text-zinc-100 overflow-hidden select-none">
@@ -239,46 +392,81 @@ export function LiveDesktopWorkspace({
       <header className="shrink-0 px-3 py-2 bg-[#111116]/95 backdrop-blur-md border-b border-white/[0.08] flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div className="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shrink-0">
-            <Monitor className="w-4 h-4" />
+            <Sparkles className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="font-display font-semibold text-sm text-white tracking-tight">
                 Antigravity
               </span>
-              <button
-                type="button"
-                onClick={onOpenConnectionModal}
-                className={cn(
-                  'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border transition active:scale-95',
-                  isOnline && !frameError
-                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
-                    : isOnline
-                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
-                    : 'bg-rose-500/15 text-rose-300 border-rose-500/35'
-                )}
-              >
-                <span
+
+              {/* LIVE AGENT STATE PILL */}
+              {isOnline && !needsAuth && !frameError ? (
+                <button
+                  type="button"
+                  onClick={onOpenConnectionModal}
                   className={cn(
-                    'w-1.5 h-1.5 rounded-full',
-                    isOnline && !frameError
-                      ? 'bg-emerald-400 animate-pulse'
-                      : isOnline
-                      ? 'bg-amber-400'
-                      : 'bg-rose-400'
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border transition active:scale-95',
+                    agentState === 'working'
+                      ? 'bg-indigo-500/20 text-indigo-200 border-indigo-400/50'
+                      : agentState === 'waiting'
+                      ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/50'
+                      : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
                   )}
-                />
-                {isOnline && !frameError ? 'Live' : isOnline ? 'Standby' : 'Offline'}
-              </button>
+                >
+                  <span
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full',
+                      agentState === 'working'
+                        ? 'bg-indigo-400 animate-ping'
+                        : 'bg-emerald-400 animate-pulse'
+                    )}
+                  />
+                  {agentState === 'working'
+                    ? 'Working…'
+                    : agentState === 'waiting'
+                    ? 'Ready!'
+                    : 'Live'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenConnectionModal}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono border bg-rose-500/15 text-rose-300 border-rose-500/35"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  {needsAuth ? 'Locked' : 'Offline'}
+                </button>
+              )}
             </div>
-            <p className="text-[10px] font-mono text-zinc-400 truncate max-w-[165px] sm:max-w-xs">
-              {activeWinTitle}
+            <p className="text-[10px] font-mono text-zinc-400 truncate max-w-[155px] sm:max-w-xs">
+              {activeWinTitle.replace(/\s*-\s*Antigravity IDE$/i, '')}
             </p>
           </div>
         </div>
 
         {/* TOP RIGHT CONTROLS */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
+          {/* ALERT BELL */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !alertsEnabled;
+              setAlertsEnabled(next);
+              if (next) playCompletionChime();
+              showToast(next ? 'Agent finish alerts ON' : 'Agent finish alerts muted');
+            }}
+            className={cn(
+              'p-2 rounded-lg border text-xs transition active:scale-95',
+              alertsEnabled
+                ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/35'
+                : 'bg-zinc-900 text-zinc-500 border-white/10'
+            )}
+            title={alertsEnabled ? 'Alerts ON: chime when agent finishes' : 'Alerts muted'}
+          >
+            {alertsEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+          </button>
+
           <button
             type="button"
             onClick={() => setIsLive((v) => !v)}
@@ -297,15 +485,15 @@ export function LiveDesktopWorkspace({
             type="button"
             onClick={cycleZoom}
             className={cn(
-              'px-2.5 py-1.5 rounded-lg border text-[11px] font-mono flex items-center gap-1 transition active:scale-95',
+              'px-2 py-1.5 rounded-lg border text-[11px] font-mono flex items-center gap-0.5 transition active:scale-95',
               zoom > 1
                 ? 'bg-indigo-500/20 text-indigo-200 border-indigo-500/45'
                 : 'bg-zinc-900 text-zinc-300 border-white/10'
             )}
-            title="Cycle zoom: Fit / 2x / 3x"
+            title="Cycle zoom"
           >
             {zoom > 1 ? <ZoomOut className="w-3.5 h-3.5" /> : <ZoomIn className="w-3.5 h-3.5" />}
-            <span>{zoom === 1 ? 'Fit' : `${zoom}×`}</span>
+            <span>{zoom === 1 ? '1×' : `${zoom}×`}</span>
           </button>
 
           <button
@@ -328,53 +516,159 @@ export function LiveDesktopWorkspace({
         </div>
       </header>
 
-      {/* 2. 1-TAP PC WINDOW SWITCHER STRIP */}
-      {!isCinemaMode && windows.length > 0 && (
-        <div className="shrink-0 px-3 py-1.5 bg-[#0D0D12] border-b border-white/[0.06] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-          <AppWindow className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-          {windows.slice(0, 12).map((win) => {
-            const shortLabel = win.title.replace(/\s*-\s*Antigravity IDE$/i, '').trim() || win.title;
-            return (
+      {/* 2. VIEW MODE + IDE WINDOW SWITCHER BAR */}
+      {!isCinemaMode && (
+        <div className="shrink-0 px-3 py-1.5 bg-[#0D0D12] border-b border-white/[0.06] flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+          {/* VIEW MODE PILLS: CHAT FOCUS / IDE ONLY / FULL */}
+          <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-lg border border-white/[0.08] shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode(viewMode === 'chat_left' ? 'chat_left' : 'chat_right');
+                setZoom(1);
+              }}
+              className={cn(
+                'px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition',
+                isChatMode
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              )}
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>Chat</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('ide');
+                setZoom(1);
+              }}
+              className={cn(
+                'px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition',
+                viewMode === 'ide'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              )}
+            >
+              <Code2 className="w-3 h-3" />
+              <span>IDE</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('full');
+                setZoom(1);
+              }}
+              className={cn(
+                'px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition',
+                viewMode === 'full'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              )}
+            >
+              <Monitor className="w-3 h-3" />
+              <span>Full</span>
+            </button>
+          </div>
+
+          {/* CHAT SIDE & WIDTH ADJUSTER (only in Chat Focus mode) */}
+          {isChatMode && (
+            <div className="flex items-center gap-1 shrink-0 text-[10px] font-mono">
               <button
-                key={win.hwnd}
                 type="button"
-                onClick={() => handleFocusWindow(win)}
-                className={cn(
-                  'px-2.5 py-1 rounded-full text-[11px] font-mono border whitespace-nowrap transition active:scale-95 shrink-0 max-w-[175px] truncate',
-                  win.active
-                    ? 'bg-indigo-600/25 text-indigo-100 border-indigo-500/60 font-medium'
-                    : win.isAntigravity
-                    ? 'bg-cyan-500/10 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/20'
-                    : 'bg-zinc-900/80 text-zinc-400 border-white/10 hover:text-zinc-200'
-                )}
-                title={win.title}
+                onClick={() => setViewMode(viewMode === 'chat_right' ? 'chat_left' : 'chat_right')}
+                className="p-1 rounded-md bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white active:scale-95"
+                title="Switch Chat Sidebar Left / Right"
               >
-                {shortLabel}
+                {viewMode === 'chat_right' ? (
+                  <PanelRight className="w-3.5 h-3.5 text-indigo-400" />
+                ) : (
+                  <PanelLeft className="w-3.5 h-3.5 text-indigo-400" />
+                )}
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setChatPct((p) => Math.max(24, p - 4))}
+                className="px-1.5 py-0.5 rounded bg-zinc-900 border border-white/10 text-zinc-300"
+                title="Narrower chat crop"
+              >
+                −
+              </button>
+              <span className="text-zinc-400 w-7 text-center">{chatPct}%</span>
+              <button
+                type="button"
+                onClick={() => setChatPct((p) => Math.min(62, p + 4))}
+                className="px-1.5 py-0.5 rounded bg-zinc-900 border border-white/10 text-zinc-300"
+                title="Wider chat crop"
+              >
+                +
+              </button>
+            </div>
+          )}
+
+          {/* 1-TAP IDE WINDOW PILLS */}
+          {windows.length > 0 && (
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
+              <AppWindow className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              {windows
+                .filter((w) => w.isAntigravity || viewMode === 'full')
+                .slice(0, 6)
+                .map((win) => {
+                  const shortLabel =
+                    win.title.replace(/\s*-\s*Antigravity IDE$/i, '').split(' - ').pop()?.trim() ||
+                    win.title;
+                  return (
+                    <button
+                      key={win.hwnd}
+                      type="button"
+                      onClick={() => handleFocusWindow(win)}
+                      className={cn(
+                        'px-2 py-0.5 rounded-full text-[10px] font-mono border whitespace-nowrap transition active:scale-95 max-w-[120px] truncate',
+                        win.active
+                          ? 'bg-indigo-600/25 text-indigo-100 border-indigo-500/60 font-medium'
+                          : 'bg-cyan-500/10 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/20'
+                      )}
+                      title={win.title}
+                    >
+                      {shortLabel}
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AGENT FINISHED NOTIFICATION BANNER */}
+      {showDoneBanner && (
+        <div className="shrink-0 px-3 py-2 bg-emerald-500/15 border-b border-emerald-500/35 flex items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-emerald-200 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>Antigravity finished — ready for your review!</span>
+          </div>
           <button
             type="button"
-            onClick={() => {
-              onRefreshStatus();
-              fetchFrame();
-            }}
-            className="p-1 rounded-full bg-zinc-900 border border-white/10 text-zinc-400 hover:text-white shrink-0 active:scale-95 ml-auto"
-            title="Refresh windows"
+            onClick={() => setShowDoneBanner(false)}
+            className="text-[10px] font-mono text-emerald-300 px-2 py-0.5 rounded bg-emerald-500/20"
           >
-            <RotateCw className="w-3 h-3" />
+            Dismiss
           </button>
         </div>
       )}
 
-      {/* 3. CENTRAL HERO: EDGE-TO-EDGE LIVE PC SCREEN VIEWPORT */}
+      {/* 3. CENTRAL HERO: CHAT FOCUS / IDE / FULL LIVE VIEWPORT */}
       <main className="flex-1 min-h-0 relative bg-black flex items-center justify-center overflow-auto">
-        {frameUrl ? (
-          <div className={cn('relative inline-block m-auto', zoomWidthClass)}>
+        {frameUrl && !needsAuth ? (
+          <div
+            className={cn(
+              'relative inline-block m-auto',
+              isChatMode && zoom === 1 ? 'max-w-[540px] w-full' : zoomWidthClass
+            )}
+          >
             <img
               ref={imgRef}
               src={frameUrl}
-              alt="Live Antigravity PC Screen"
+              alt="Live Antigravity IDE Viewport"
               onClick={handleScreenTap}
               draggable={false}
               className="w-full h-auto block cursor-crosshair"
@@ -388,18 +682,37 @@ export function LiveDesktopWorkspace({
           </div>
         ) : (
           <div className="p-6 text-center max-w-sm space-y-3">
-            {frameError || !isOnline ? (
+            {needsAuth ? (
+              <>
+                <div className="w-12 h-12 rounded-2xl bg-indigo-500/15 border border-indigo-500/35 flex items-center justify-center text-indigo-400 mx-auto">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <div className="font-display font-semibold text-sm text-white">
+                  Session Protected
+                </div>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Click <strong className="text-white">AG Mobile QR</strong> in the bottom-right corner of Antigravity IDE and scan the QR code to connect securely.
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenConnectionModal}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white active:scale-95"
+                >
+                  Enter Link / Token
+                </button>
+              </>
+            ) : frameError || !isOnline ? (
               <>
                 <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
                 <div className="font-display font-semibold text-sm text-white">
-                  {!isOnline ? 'Companion Service Offline' : 'Waiting for PC Screen'}
+                  {!isOnline ? 'Companion Service Offline' : 'Waiting for Antigravity Window'}
                 </div>
                 <p className="text-xs text-zinc-400 leading-relaxed">
                   {!isOnline
-                    ? 'Scan the QR code from "AG Mobile QR" in Antigravity IDE or tap Configure below to update your tunnel URL.'
-                    : `${frameError}. Make sure your laptop screen is unlocked and reload Antigravity IDE once if needed.`}
+                    ? 'Open Antigravity IDE on your PC, click "AG Mobile QR" in the bottom-right status bar, and scan.'
+                    : `${frameError}. Keep your laptop unlocked and reload Antigravity IDE once if needed.`}
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1">
                   <button
@@ -418,14 +731,14 @@ export function LiveDesktopWorkspace({
                     onClick={onOpenConnectionModal}
                     className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-medium text-white active:scale-95"
                   >
-                    Connection Settings
+                    Connection
                   </button>
                 </div>
               </>
             ) : (
               <>
                 <RotateCw className="w-7 h-7 text-indigo-400 animate-spin mx-auto" />
-                <div className="text-xs font-mono text-zinc-400">Connecting to live PC screen...</div>
+                <div className="text-xs font-mono text-zinc-400">Connecting to Antigravity IDE...</div>
               </>
             )}
           </div>
@@ -433,73 +746,88 @@ export function LiveDesktopWorkspace({
 
         {/* FLOATING TOAST FEEDBACK */}
         {toastMsg && (
-          <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 rounded-full bg-[#121218]/90 backdrop-blur-md border border-indigo-500/40 text-[11px] font-mono text-indigo-200 shadow-lg pointer-events-none flex items-center gap-1.5">
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 rounded-full bg-[#121218]/92 backdrop-blur-md border border-indigo-500/40 text-[11px] font-mono text-indigo-200 shadow-lg pointer-events-none flex items-center gap-1.5">
             <MousePointerClick className="w-3 h-3 text-indigo-400" />
             <span>{toastMsg}</span>
           </div>
         )}
       </main>
 
-      {/* 4. BOTTOM INTERACTION DOCK: TAP CONTROLS + KEYBOARD + PROMPT COMPOSER */}
+      {/* 4. BOTTOM AI-CODING DOCK: QUICK CODING ACTIONS + VOICE & PROMPT COMPOSER */}
       {!isCinemaMode && (
         <footer className="shrink-0 bg-[#111116]/95 backdrop-blur-xl border-t border-white/[0.08] px-3 pt-2 pb-3 safe-bottom space-y-2">
-          {/* ACTION TOOLBAR: Click mode, Scroll, Shortcuts toggle */}
-          <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
-            <div className="flex items-center gap-1 bg-zinc-900/90 p-0.5 rounded-lg border border-white/[0.08]">
-              {(['click', 'double_click', 'right_click'] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setTapMode(m)}
-                  className={cn(
-                    'px-2 py-1 rounded-md text-[10px] transition',
-                    tapMode === m
-                      ? 'bg-indigo-600 text-white font-semibold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200'
-                  )}
-                >
-                  {m === 'click' ? 'Click' : m === 'double_click' ? '2×' : 'Right'}
-                </button>
-              ))}
-            </div>
+          {/* CODING QUICK ACTIONS + SCROLL + TAP MODE */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-[11px] font-mono">
+            <button
+              type="button"
+              onClick={() => handleShortcut('alt+enter', 'Accept')}
+              className="px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 flex items-center gap-1 shrink-0 active:scale-95"
+            >
+              <Check className="w-3 h-3" />
+              <span>Accept</span>
+            </button>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => handleScroll(450)}
-                className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 active:scale-95"
-                title="Scroll up"
-              >
-                <ChevronUp className="w-3.5 h-3.5" />
-                <span className="text-[10px]">Up</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleScroll(-450)}
-                className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 active:scale-95"
-                title="Scroll down"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-                <span className="text-[10px]">Down</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowShortcuts((s) => !s)}
-                className={cn(
-                  'px-2 py-1 rounded-lg border flex items-center gap-1 active:scale-95 transition',
-                  showShortcuts
-                    ? 'bg-indigo-600/25 text-indigo-200 border-indigo-500/50'
-                    : 'bg-zinc-900 text-zinc-300 border-white/10'
-                )}
-                title="Toggle keyboard shortcuts"
-              >
-                <Keyboard className="w-3.5 h-3.5" />
-                <span className="text-[10px]">Keys</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleShortcut('escape', 'Stop / Esc')}
+              className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 flex items-center gap-1 shrink-0 active:scale-95"
+            >
+              <OctagonX className="w-3 h-3" />
+              <span>Stop</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleShortcut('ctrl+l', 'Focus Chat')}
+              className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-200 shrink-0 active:scale-95"
+            >
+              Chat
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleScroll(450)}
+              className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 shrink-0 active:scale-95"
+            >
+              <ChevronUp className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleScroll(-450)}
+              className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 shrink-0 active:scale-95"
+            >
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Tap mode cycle pill */}
+            <button
+              type="button"
+              onClick={() =>
+                setTapMode((m) => (m === 'click' ? 'double_click' : m === 'double_click' ? 'right_click' : 'click'))
+              }
+              className="px-2 py-1 rounded-lg bg-zinc-900 border border-white/10 text-zinc-300 text-[10px] shrink-0 active:scale-95"
+              title="Tap mode: Click / Double / Right"
+            >
+              {tapMode === 'click' ? 'Tap: 1×' : tapMode === 'double_click' ? 'Tap: 2×' : 'Tap: Right'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowShortcuts((s) => !s)}
+              className={cn(
+                'px-2 py-1 rounded-lg border flex items-center gap-1 shrink-0 active:scale-95 transition ml-auto',
+                showShortcuts
+                  ? 'bg-indigo-600/25 text-indigo-200 border-indigo-500/50'
+                  : 'bg-zinc-900 text-zinc-300 border-white/10'
+              )}
+            >
+              <Keyboard className="w-3.5 h-3.5" />
+              <span className="text-[10px]">Keys</span>
+            </button>
           </div>
 
-          {/* COLLAPSIBLE IDE SHORTCUTS STRIP */}
+          {/* COLLAPSIBLE EXTRA SHORTCUTS */}
           {showShortcuts && (
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
               {shortcuts.map((s) => (
@@ -515,8 +843,22 @@ export function LiveDesktopWorkspace({
             </div>
           )}
 
-          {/* LIQUID-GLASS PROMPT COMPOSER BAR */}
-          <div className="flex items-end gap-2 bg-[#09090B] border border-white/[0.12] focus-within:border-indigo-500/70 rounded-2xl p-1.5 shadow-inner transition-colors">
+          {/* VOICE + LIQUID-GLASS PROMPT COMPOSER BAR */}
+          <div className="flex items-end gap-1.5 bg-[#09090B] border border-white/[0.12] focus-within:border-indigo-500/70 rounded-2xl p-1.5 shadow-inner transition-colors">
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              className={cn(
+                'p-2.5 rounded-xl border transition active:scale-95 shrink-0',
+                isListening
+                  ? 'bg-rose-500/20 border-rose-500/50 text-rose-300 animate-pulse'
+                  : 'bg-zinc-900 hover:bg-zinc-800 border-white/10 text-zinc-300'
+              )}
+              title="Voice dictation"
+            >
+              {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+
             <textarea
               rows={1}
               value={promptText}
@@ -527,18 +869,20 @@ export function LiveDesktopWorkspace({
                   handleSendPrompt(true);
                 }
               }}
-              placeholder="Tap chat box above, then type & send..."
-              className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 px-2.5 py-2 focus:outline-none resize-none max-h-24 select-text"
+              placeholder="Speak or type prompt for Antigravity..."
+              className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 px-2 py-2 focus:outline-none resize-none max-h-24 select-text"
             />
+
             <button
               type="button"
               disabled={!promptText.trim() || isSending}
               onClick={() => handleSendPrompt(false)}
               className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 border border-white/10 text-zinc-300 transition active:scale-95 shrink-0"
-              title="Paste only (without pressing Enter)"
+              title="Paste only"
             >
               <ClipboardPaste className="w-4 h-4" />
             </button>
+
             <button
               type="button"
               disabled={!promptText.trim() || isSending}

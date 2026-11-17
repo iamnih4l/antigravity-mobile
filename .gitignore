@@ -16,6 +16,8 @@ yarn-error.log*
 # Environment files
 .env*.local
 .env
+.env.production
+mobile-pwa/.env.production
 
 # TypeScript
 *.tsbuildinfo
@@ -35,6 +37,8 @@ companion-service/data/*.db-wal
 companion-service/data/*.db-shm
 companion-service/data/tunnel-state.json
 companion-service/data/workspaces.json
+companion-service/data/capability-report.json
+companion-service/data/agent-probe.json
 
 # IDE Extension build artifacts
 ide-extension/out/

@@ -12,6 +12,7 @@ interface TunnelState {
 }
 
 let activeTunnelUrl: string | null = null;
+let activeSessionToken: string | null = null;
 let tunnelProcess: ChildProcess | null = null;
 let qrPanel: vscode.WebviewPanel | null = null;
 
@@ -211,7 +212,8 @@ export function activate(context: vscode.ExtensionContext) {
       if (forceRestart) {
         const res = await fetch(`${localUrl}/api/tunnel/restart`, { method: 'POST' });
         if (res.ok) {
-          const data = (await res.json()) as { url?: string | null };
+          const data = (await res.json()) as { url?: string | null; sessionToken?: string };
+          if (data.sessionToken) activeSessionToken = data.sessionToken;
           if (data.url) {
             activeTunnelUrl = data.url;
             isStartingTunnel = false;
@@ -227,7 +229,8 @@ export function activate(context: vscode.ExtensionContext) {
         try {
           const res = await fetch(`${localUrl}/api/tunnel`);
           if (res.ok) {
-            const data = (await res.json()) as { url?: string | null; status?: string };
+            const data = (await res.json()) as { url?: string | null; status?: string; sessionToken?: string };
+            if (data.sessionToken) activeSessionToken = data.sessionToken;
             if (data.url) {
               activeTunnelUrl = data.url;
               isStartingTunnel = false;
@@ -270,12 +273,18 @@ export function activate(context: vscode.ExtensionContext) {
     return clean;
   }
 
+  function buildConnectLink(): string {
+    const pwaUrl = getPwaUrl();
+    const endpoint = activeTunnelUrl || getCompanionUrl();
+    if (!pwaUrl) return endpoint;
+    const tokenPart = activeSessionToken ? `&token=${encodeURIComponent(activeSessionToken)}` : '';
+    return `${pwaUrl}?endpoint=${encodeURIComponent(endpoint)}${tokenPart}`;
+  }
+
   async function renderQrWebview(panel: vscode.WebviewPanel) {
     const pwaUrl = getPwaUrl();
     const endpoint = activeTunnelUrl || getCompanionUrl();
-    const connectLink = pwaUrl
-      ? `${pwaUrl}?endpoint=${encodeURIComponent(endpoint)}`
-      : endpoint;
+    const connectLink = buildConnectLink();
 
     let svgQr = '';
     try {
@@ -503,8 +512,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         qrPanel.webview.onDidReceiveMessage(async (msg: { command: string; value?: string }) => {
           const endpoint = activeTunnelUrl || getCompanionUrl();
-          const pwaUrl = getPwaUrl();
-          const connectLink = pwaUrl ? `${pwaUrl}?endpoint=${encodeURIComponent(endpoint)}` : endpoint;
+          const connectLink = buildConnectLink();
 
           if (msg.command === 'copyConnectLink') {
             await vscode.env.clipboard.writeText(connectLink);

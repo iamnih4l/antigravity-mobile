@@ -4,7 +4,6 @@ import time
 import io
 import base64
 import ctypes
-from ctypes import wintypes
 
 # Enable Per-Monitor DPI awareness so screen capture & mouse coordinates match physical pixels 1:1
 try:
@@ -15,7 +14,7 @@ except Exception:
     except Exception:
         pass
 
-from PIL import ImageGrab
+from PIL import ImageGrab, ImageChops
 import win32gui
 import win32con
 import win32clipboard
@@ -48,7 +47,7 @@ VK_MAP = {
     'pagedown': 0x22,
     'ctrl': 0x11,
     'control': 0x11,
-    'cmd': 0x11,  # Map Mac Cmd shortcuts to Windows Ctrl automatically
+    'cmd': 0x11,
     'shift': 0x10,
     'alt': 0x12,
     'win': 0x5B,
@@ -67,6 +66,14 @@ for ch in '0123456789':
     VK_MAP[ch] = ord(ch)
 for n in range(1, 13):
     VK_MAP[f'f{n}'] = 0x6F + n
+
+# Lightweight visual motion tracker for detecting when the AI agent is actively streaming vs finished
+_motion_state = {
+    'prev_thumb': None,
+    'working_since': None,
+    'last_motion_at': 0.0,
+    'state': 'idle',  # 'idle' | 'working' | 'waiting'
+}
 
 
 def get_screen_size():
@@ -97,7 +104,7 @@ def list_windows():
             return
         try:
             rect = win32gui.GetWindowRect(hwnd)
-            if (rect[2] - rect[0]) < 100 or (rect[3] - rect[1]) < 80:
+            if (rect[2] - rect[0]) < 150 or (rect[3] - rect[1]) < 100:
                 return
         except Exception:
             return
@@ -108,11 +115,40 @@ def list_windows():
             'title': title,
             'active': int(hwnd) == int(fg),
             'isAntigravity': is_ide,
+            'rect': [int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3])],
         })
 
     win32gui.EnumWindows(enum_cb, None)
     results.sort(key=lambda w: (not w['isAntigravity'], not w['active'], w['title'].lower()))
     return results[:25]
+
+
+def find_ide_window_rect(screen_w, screen_h):
+    """Returns clamped (left, top, right, bottom) of the foreground or first visible Antigravity/VS Code window."""
+    try:
+        fg = win32gui.GetForegroundWindow()
+        fg_title = (win32gui.GetWindowText(fg) or '').lower()
+        if ('antigravity' in fg_title or 'visual studio code' in fg_title or 'cursor' in fg_title) and not win32gui.IsIconic(fg):
+            r = win32gui.GetWindowRect(fg)
+            return _clamp_rect(r, screen_w, screen_h)
+    except Exception:
+        pass
+
+    for w in list_windows():
+        if w['isAntigravity']:
+            r = w.get('rect')
+            if r:
+                return _clamp_rect(r, screen_w, screen_h)
+
+    return (0, 0, screen_w, screen_h)
+
+
+def _clamp_rect(rect, screen_w, screen_h):
+    l = max(0, min(screen_w - 1, int(rect[0])))
+    t = max(0, min(screen_h - 1, int(rect[1])))
+    r = max(l + 100, min(screen_w, int(rect[2])))
+    b = max(t + 100, min(screen_h, int(rect[3])))
+    return (l, t, r, b)
 
 
 def focus_window(hwnd):
@@ -123,7 +159,6 @@ def focus_window(hwnd):
         win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
     else:
         win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
-    # Windows foreground lock workaround: quick Alt press allows SetForegroundWindow reliably
     user32.keybd_event(0x12, 0, 0, 0)
     user32.keybd_event(0x12, 0, KEYEVENTF_KEYUP, 0)
     try:
@@ -153,7 +188,6 @@ def scroll_at(x, y, delta):
     if x is not None and y is not None:
         user32.SetCursorPos(int(round(x)), int(round(y)))
         time.sleep(0.02)
-    # Windows wheel delta: 120 = 1 notch up, -120 = 1 notch down
     user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, int(delta), 0)
 
 
@@ -171,7 +205,7 @@ def press_combo(combo_str):
 
 
 def set_clipboard_text(text):
-    for attempt in range(5):
+    for _ in range(5):
         try:
             win32clipboard.OpenClipboard()
             try:
@@ -194,25 +228,97 @@ def type_text_via_paste(text, submit=False):
         press_combo('enter')
 
 
-def capture_jpeg(max_width=1280, quality=72):
-    img = ImageGrab.grab()
-    orig_w, orig_h = img.size
-    if max_width and orig_w > max_width:
-        scale = max_width / float(orig_w)
-        new_h = max(1, int(round(orig_h * scale)))
+def _update_agent_motion(cropped_img):
+    """Detects visual streaming motion inside the IDE/Chat viewport."""
+    now = time.time()
+    thumb = cropped_img.convert('L').resize((48, 48))
+    prev = _motion_state['prev_thumb']
+    _motion_state['prev_thumb'] = thumb
+
+    if prev is None:
+        return _motion_state['state']
+
+    diff = ImageChops.difference(thumb, prev)
+    hist = diff.histogram()
+    # Count pixels that changed meaningfully (delta >= 12)
+    total_px = 48 * 48
+    changed_px = sum(hist[12:])
+    change_ratio = changed_px / float(total_px)
+
+    if change_ratio >= 0.008:
+        # Meaningful text/UI change detected
+        _motion_state['last_motion_at'] = now
+        if _motion_state['working_since'] is None:
+            _motion_state['working_since'] = now
+        # Promote to 'working' once sustained >= 1.2s
+        if (now - _motion_state['working_since']) >= 1.2:
+            _motion_state['state'] = 'working'
+    else:
+        # No visual change on this frame
+        since_motion = now - _motion_state['last_motion_at']
+        if _motion_state['state'] == 'working' and since_motion >= 3.0:
+            _motion_state['state'] = 'waiting'
+            _motion_state['working_since'] = None
+        elif _motion_state['state'] == 'waiting' and since_motion >= 12.0:
+            _motion_state['state'] = 'idle'
+        elif _motion_state['state'] == 'idle' and since_motion >= 2.0:
+            _motion_state['working_since'] = None
+
+    return _motion_state['state']
+
+
+def capture_jpeg(max_width=1280, quality=76, mode='chat_right', chat_pct=38):
+    full_img = ImageGrab.grab()
+    screen_w, screen_h = full_img.size
+
+    pct = max(22, min(65, int(chat_pct or 38))) / 100.0
+    crop_l, crop_t, crop_r, crop_b = 0, 0, screen_w, screen_h
+
+    if mode in ('chat_right', 'chat_left', 'ide'):
+        ide_l, ide_t, ide_r, ide_b = find_ide_window_rect(screen_w, screen_h)
+        ide_w = ide_r - ide_l
+        if mode == 'ide':
+            crop_l, crop_t, crop_r, crop_b = ide_l, ide_t, ide_r, ide_b
+        elif mode == 'chat_right':
+            crop_w = max(320, int(round(ide_w * pct)))
+            crop_l = max(ide_l, ide_r - crop_w)
+            crop_t, crop_r, crop_b = ide_t, ide_r, ide_b
+        elif mode == 'chat_left':
+            crop_w = max(320, int(round(ide_w * pct)))
+            crop_l, crop_t = ide_l, ide_t
+            crop_r = min(ide_r, ide_l + crop_w)
+            crop_b = ide_b
+
+    img = full_img.crop((crop_l, crop_t, crop_r, crop_b))
+    crop_w = crop_r - crop_l
+    crop_h = crop_b - crop_t
+
+    agent_state = _update_agent_motion(img)
+
+    if max_width and crop_w > max_width:
+        scale = max_width / float(crop_w)
+        new_h = max(1, int(round(crop_h * scale)))
         img = img.resize((int(max_width), new_h))
+
     if img.mode != 'RGB':
         img = img.convert('RGB')
+
     buf = io.BytesIO()
     img.save(buf, format='JPEG', quality=int(quality), optimize=True)
     b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+
     return {
         'jpegBase64': b64,
-        'screenWidth': orig_w,
-        'screenHeight': orig_h,
+        'screenWidth': screen_w,
+        'screenHeight': screen_h,
+        'cropLeft': crop_l,
+        'cropTop': crop_t,
+        'cropWidth': crop_w,
+        'cropHeight': crop_h,
         'frameWidth': img.size[0],
         'frameHeight': img.size[1],
         'activeWindow': get_active_window_title(),
+        'agentState': agent_state,
     }
 
 
@@ -226,11 +332,14 @@ def handle_request(req):
             'screenHeight': h,
             'activeWindow': get_active_window_title(),
             'windows': list_windows(),
+            'agentState': _motion_state['state'],
         }
     if cmd == 'capture':
         data = capture_jpeg(
             max_width=req.get('maxWidth', 1280),
-            quality=req.get('quality', 72),
+            quality=req.get('quality', 76),
+            mode=req.get('mode', 'chat_right'),
+            chat_pct=req.get('chatPct', 38),
         )
         return {'ok': True, **data}
     if cmd == 'windows':

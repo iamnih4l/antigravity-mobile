@@ -34,6 +34,29 @@ export async function createCompanionServer({
   });
   const wsClients = new Set();
   const connectedIdeWindows = new Map(); // workspacePath -> { project, activeFile, lastSeenAt }
+  const sessionToken = `agm_${crypto.randomBytes(24).toString('hex')}`;
+
+  function isDirectLocalhost(req) {
+    // Requests arriving via Cloudflare Tunnel / reverse proxy include forwarding headers
+    if (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.headers['cf-ray']) {
+      return false;
+    }
+    const addr = req.socket.remoteAddress || '';
+    return addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1';
+  }
+
+  function isAuthorizedRequest(req, url) {
+    if (isDirectLocalhost(req)) return true;
+    const authHeader = String(req.headers.authorization || '');
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const queryToken = (url.searchParams.get('token') || '').trim();
+    const candidate = bearer || queryToken;
+    if (!candidate) return false;
+    if (candidate.length === sessionToken.length && crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(sessionToken))) {
+      return true;
+    }
+    return Boolean(security.verifyToken(candidate));
+  }
 
   function broadcast(payload) {
     const data = JSON.stringify(payload);
@@ -139,18 +162,43 @@ export async function createCompanionServer({
     }
 
     try {
-      // Unauthenticated bootstrap endpoints: health & QR pairing
+      // Unauthenticated bootstrap endpoints: health & pairing
       if (pathname === '/api/health' && req.method === 'GET') {
+        const local = isDirectLocalhost(req);
+        const authed = isAuthorizedRequest(req, url);
         return sendJson(res, 200, {
           status: 'online',
           alwaysReadyMode: true,
+          authRequired: !local,
+          authenticated: authed,
           uptimeSeconds: Math.floor(process.uptime()),
           ideConnected: acp.ideConnected || connectedIdeWindows.size > 0,
-          connectedWindows: Array.from(connectedIdeWindows.values()),
-          activeWorkspace: workspace.activeWorkspace,
-          tunnelUrl: tunnel.url,
-          tunnelStatus: tunnel.status,
+          ...(authed
+            ? {
+                connectedWindows: Array.from(connectedIdeWindows.values()),
+                activeWorkspace: workspace.activeWorkspace,
+                tunnelUrl: tunnel.url,
+                tunnelStatus: tunnel.status,
+              }
+            : {}),
           timestamp: new Date().toISOString(),
+        });
+      }
+
+      if (pathname === '/api/auth/pair' && req.method === 'POST') {
+        const body = await readBody(req);
+        const session = await security.pairDevice({
+          pairingCode: body.pairingCode,
+          deviceName: body.deviceName,
+          clientIp: req.socket.remoteAddress,
+        });
+        return sendJson(res, 200, session);
+      }
+
+      // Enforce session Bearer token on all remote tunnel traffic
+      if (!isAuthorizedRequest(req, url)) {
+        return sendJson(res, 401, {
+          error: 'Unauthorized. Scan the QR code from "AG Mobile QR" inside Antigravity IDE to authenticate.',
         });
       }
 
@@ -182,27 +230,23 @@ export async function createCompanionServer({
         if (!tunnel.url && tunnel.status === 'stopped' && autoTunnel) {
           tunnel.start().catch(() => {});
         }
-        return sendJson(res, 200, tunnel.getStatus());
+        return sendJson(res, 200, {
+          ...tunnel.getStatus(),
+          ...(isDirectLocalhost(req) ? { sessionToken } : {}),
+        });
       }
 
       if (pathname === '/api/tunnel/restart' && req.method === 'POST') {
         const status = await tunnel.restart();
-        return sendJson(res, 200, status);
+        return sendJson(res, 200, {
+          ...status,
+          ...(isDirectLocalhost(req) ? { sessionToken } : {}),
+        });
       }
 
       if (pathname === '/api/auth/qr' && req.method === 'GET') {
         const qr = security.generatePairingQrPayload(`http://${req.headers.host || '127.0.0.1:' + port}`);
         return sendJson(res, 200, qr);
-      }
-
-      if (pathname === '/api/auth/pair' && req.method === 'POST') {
-        const body = await readBody(req);
-        const session = await security.pairDevice({
-          pairingCode: body.pairingCode,
-          deviceName: body.deviceName,
-          clientIp: req.socket.remoteAddress,
-        });
-        return sendJson(res, 200, session);
       }
 
       if (pathname === '/api/discovery' && req.method === 'GET') {
@@ -392,17 +436,25 @@ export async function createCompanionServer({
 
       if (pathname === '/api/desktop/frame' && req.method === 'GET') {
         const maxWidth = Number(url.searchParams.get('maxWidth') || 1280);
-        const quality = Number(url.searchParams.get('quality') || 70);
-        const frame = await desktop.captureFrame({ maxWidth, quality });
+        const quality = Number(url.searchParams.get('quality') || 76);
+        const mode = url.searchParams.get('mode') || 'chat_right';
+        const chatPct = Number(url.searchParams.get('chatPct') || 38);
+        const frame = await desktop.captureFrame({ maxWidth, quality, mode, chatPct });
         res.writeHead(200, {
           'Content-Type': 'image/jpeg',
           'Content-Length': frame.buffer.length,
           'Cache-Control': 'no-store, no-cache, must-revalidate',
           'Access-Control-Allow-Origin': '*',
-          'Access-Control-Expose-Headers': 'X-Screen-Width, X-Screen-Height, X-Active-Window',
+          'Access-Control-Expose-Headers':
+            'X-Screen-Width, X-Screen-Height, X-Crop-Left, X-Crop-Top, X-Crop-Width, X-Crop-Height, X-Active-Window, X-Agent-State',
           'X-Screen-Width': String(frame.screenWidth),
           'X-Screen-Height': String(frame.screenHeight),
+          'X-Crop-Left': String(frame.cropLeft),
+          'X-Crop-Top': String(frame.cropTop),
+          'X-Crop-Width': String(frame.cropWidth),
+          'X-Crop-Height': String(frame.cropHeight),
           'X-Active-Window': encodeURIComponent(frame.activeWindow || ''),
+          'X-Agent-State': String(frame.agentState || 'idle'),
         });
         return res.end(frame.buffer);
       }

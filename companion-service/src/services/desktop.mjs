@@ -142,11 +142,11 @@ export class DesktopController {
     return { windows: this.windows, activeWindow: this.activeWindow };
   }
 
-  async captureFrame({ maxWidth = 1280, quality = 70 } = {}) {
+  async captureFrame({ maxWidth = 1280, quality = 76, mode = 'chat_right', chatPct = 38 } = {}) {
     if (process.platform !== 'win32' || !this.enableHelper) {
       throw new Error('Live JPEG frame capture is currently configured for Windows hosts');
     }
-    const res = await this._callHelper({ cmd: 'capture', maxWidth, quality }, 8000);
+    const res = await this._callHelper({ cmd: 'capture', maxWidth, quality, mode, chatPct }, 8000);
     this.streaming = true;
     this.resolution = { width: res.screenWidth, height: res.screenHeight };
     if (res.activeWindow) this.activeWindow = res.activeWindow;
@@ -155,9 +155,14 @@ export class DesktopController {
       buffer: Buffer.from(res.jpegBase64, 'base64'),
       screenWidth: res.screenWidth,
       screenHeight: res.screenHeight,
+      cropLeft: res.cropLeft ?? 0,
+      cropTop: res.cropTop ?? 0,
+      cropWidth: res.cropWidth ?? res.screenWidth,
+      cropHeight: res.cropHeight ?? res.screenHeight,
       frameWidth: res.frameWidth,
       frameHeight: res.frameHeight,
       activeWindow: this.activeWindow,
+      agentState: res.agentState || 'idle',
     };
   }
 
