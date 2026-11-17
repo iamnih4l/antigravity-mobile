@@ -201,95 +201,54 @@ export function activate(context: vscode.ExtensionContext) {
     return false;
   }
 
-  // 4. Auto-start or Reuse Cloudflare Quick Tunnel
+  // 4. Fetch or Restart Cloudflare Tunnel managed by the Companion Service Daemon
   async function ensureCloudflareTunnel(forceRestart = false): Promise<string | null> {
-    if (!forceRestart) {
-      // Check in-memory URL
-      if (activeTunnelUrl && (await isHealthOk(activeTunnelUrl, 4000))) {
-        updateStatusBar();
-        return activeTunnelUrl;
-      }
-      // Check persisted tunnel state from another IDE window / existing process
-      const saved = readTunnelState();
-      if (saved && (await isHealthOk(saved.url, 4000))) {
-        activeTunnelUrl = saved.url;
-        updateStatusBar();
-        return activeTunnelUrl;
-      }
-    } else if (tunnelProcess) {
-      try {
-        tunnelProcess.kill();
-      } catch {
-        // Ignore
-      }
-      tunnelProcess = null;
-      activeTunnelUrl = null;
-    }
-
-    if (isStartingTunnel) return activeTunnelUrl;
+    const localUrl = getCompanionUrl();
     isStartingTunnel = true;
     updateStatusBar();
 
-    const cloudflaredBin = findCloudflaredBinary();
-    const localUrl = getCompanionUrl();
-
-    return new Promise((resolve) => {
-      let resolved = false;
-      const finish = (url: string | null) => {
-        if (resolved) return;
-        resolved = true;
-        isStartingTunnel = false;
-        if (url) {
-          activeTunnelUrl = url;
-          writeTunnelState({
-            url,
-            pid: tunnelProcess?.pid,
-            startedAt: new Date().toISOString(),
-          });
-        }
-        updateStatusBar();
-        if (qrPanel) {
-          renderQrWebview(qrPanel).catch(() => {});
-        }
-        resolve(url);
-      };
-
-      const timeout = setTimeout(() => finish(null), 20000);
-
-      try {
-        const proc = spawn(cloudflaredBin, ['tunnel', '--url', localUrl], {
-          windowsHide: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-        tunnelProcess = proc;
-
-        const handleChunk = (chunk: Buffer) => {
-          const text = chunk.toString('utf8');
-          const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
-          if (match) {
-            clearTimeout(timeout);
-            finish(match[0]);
-          }
-        };
-
-        proc.stdout?.on('data', handleChunk);
-        proc.stderr?.on('data', handleChunk);
-        proc.on('error', () => {
-          clearTimeout(timeout);
-          finish(null);
-        });
-        proc.on('exit', () => {
-          if (tunnelProcess === proc) {
-            tunnelProcess = null;
-            activeTunnelUrl = null;
+    try {
+      if (forceRestart) {
+        const res = await fetch(`${localUrl}/api/tunnel/restart`, { method: 'POST' });
+        if (res.ok) {
+          const data = (await res.json()) as { url?: string | null };
+          if (data.url) {
+            activeTunnelUrl = data.url;
+            isStartingTunnel = false;
             updateStatusBar();
+            if (qrPanel) renderQrWebview(qrPanel).catch(() => {});
+            return activeTunnelUrl;
           }
-        });
-      } catch {
-        clearTimeout(timeout);
-        finish(null);
+        }
       }
-    });
+
+      // Poll daemon's /api/tunnel briefly while cloudflared boots
+      for (let attempt = 0; attempt < 12; attempt++) {
+        try {
+          const res = await fetch(`${localUrl}/api/tunnel`);
+          if (res.ok) {
+            const data = (await res.json()) as { url?: string | null; status?: string };
+            if (data.url) {
+              activeTunnelUrl = data.url;
+              isStartingTunnel = false;
+              updateStatusBar();
+              if (qrPanel) renderQrWebview(qrPanel).catch(() => {});
+              return activeTunnelUrl;
+            }
+            if (data.status === 'error') break;
+          }
+        } catch {
+          // Daemon may still be starting
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    } catch {
+      // Ignore
+    }
+
+    isStartingTunnel = false;
+    updateStatusBar();
+    return activeTunnelUrl;
   }
 
   // 5. Render 1-Scan QR Webview Panel
@@ -726,12 +685,5 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  if (tunnelProcess) {
-    try {
-      tunnelProcess.kill();
-    } catch {
-      // Ignore
-    }
-    tunnelProcess = null;
-  }
+  // Companion service and Cloudflare tunnel stay alive across IDE reloads and project switches.
 }

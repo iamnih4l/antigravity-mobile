@@ -10,6 +10,7 @@ import { GitManager } from './services/git.mjs';
 import { TerminalManager } from './services/terminal.mjs';
 import { AcpAndModelManager } from './services/acp-bridge.mjs';
 import { DesktopController } from './services/desktop.mjs';
+import { CloudflareTunnelManager } from './services/tunnel.mjs';
 import { runEnvironmentDiscovery } from '../../scripts/discover-env.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,12 +19,18 @@ export async function createCompanionServer({
   port = Number(process.env.PORT || 8787),
   dbPath = path.join(__dirname, '../data/antigravity-mobile.db'),
   authorizedRoots = [path.resolve(__dirname, '../..')],
+  autoTunnel = process.env.DISABLE_AUTO_TUNNEL !== '1',
 } = {}) {
   const db = new SqliteStore(dbPath);
   const security = new SecurityManager(db, { authorizedRoots });
   const workspace = new WorkspaceManager(security, db);
   const git = new GitManager(workspace, db);
   const desktop = new DesktopController(db);
+  const tunnel = new CloudflareTunnelManager({
+    port,
+    statePath: path.join(path.dirname(dbPath), 'tunnel-state.json'),
+    autoStart: autoTunnel,
+  });
   const wsClients = new Set();
 
   function broadcast(payload) {
@@ -133,8 +140,22 @@ export async function createCompanionServer({
           uptimeSeconds: Math.floor(process.uptime()),
           ideConnected: acp.ideConnected,
           activeWorkspace: workspace.activeWorkspace,
+          tunnelUrl: tunnel.url,
+          tunnelStatus: tunnel.status,
           timestamp: new Date().toISOString(),
         });
+      }
+
+      if (pathname === '/api/tunnel' && req.method === 'GET') {
+        if (!tunnel.url && tunnel.status === 'stopped' && autoTunnel) {
+          tunnel.start().catch(() => {});
+        }
+        return sendJson(res, 200, tunnel.getStatus());
+      }
+
+      if (pathname === '/api/tunnel/restart' && req.method === 'POST') {
+        const status = await tunnel.restart();
+        return sendJson(res, 200, status);
       }
 
       if (pathname === '/api/auth/qr' && req.method === 'GET') {
@@ -446,7 +467,9 @@ export async function createCompanionServer({
     terminal,
     acp,
     desktop,
+    tunnel,
     close: async () => {
+      tunnel.stop();
       terminal.closeAll();
       db.close();
       await new Promise((resolve) => server.close(resolve));
