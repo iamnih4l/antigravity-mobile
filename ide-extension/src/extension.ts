@@ -127,17 +127,17 @@ export function activate(context: vscode.ExtensionContext) {
 
   function updateStatusBar() {
     if (isDaemonOnline && activeTunnelUrl) {
-      statusBarItem.text = '$(device-mobile) Mobile Ready';
-      statusBarItem.tooltip = `Antigravity Mobile Connected\nTunnel: ${activeTunnelUrl}\nClick to open 1-Scan QR Code`;
+      statusBarItem.text = '$(device-mobile) AG Mobile QR';
+      statusBarItem.tooltip = `Antigravity Mobile Ready\nTunnel: ${activeTunnelUrl}\nClick to open 1-Scan QR Code`;
     } else if (isStartingTunnel) {
-      statusBarItem.text = '$(sync~spin) Mobile: Starting Tunnel...';
+      statusBarItem.text = '$(sync~spin) AG Mobile: Starting...';
       statusBarItem.tooltip = 'Starting Cloudflare Quick Tunnel for your phone...';
     } else if (isDaemonOnline) {
-      statusBarItem.text = '$(radio-tower) Mobile Local';
-      statusBarItem.tooltip = 'Companion Service Online locally. Click to start/view QR Code.';
+      statusBarItem.text = '$(radio-tower) AG Mobile QR';
+      statusBarItem.tooltip = 'Companion Service Online locally. Click to open QR Code panel.';
     } else {
-      statusBarItem.text = '$(plug) Mobile Offline';
-      statusBarItem.tooltip = 'Companion Service Offline. Click to start.';
+      statusBarItem.text = '$(plug) AG Mobile (Start)';
+      statusBarItem.tooltip = 'Companion Service Offline. Click to start & open QR Code.';
     }
   }
 
@@ -338,10 +338,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     const pwaNotice = !pwaUrl
       ? `<div class="notice">
-           <strong>Tip:</strong> Set your Vercel Web App URL so scanning this QR opens your app directly and auto-connects!
-           <button class="btn primary small" onclick="send('setPwaUrl')">Set Vercel URL</button>
+           <strong>Step 1 (One-time):</strong> Paste your Vercel Web App URL below so scanning this QR opens your app directly and auto-connects.
          </div>`
       : '';
+
+    const escapedPwaUrl = pwaUrl.replace(/"/g, '&quot;');
 
     panel.webview.html = `<!DOCTYPE html>
 <html lang="en">
@@ -360,7 +361,7 @@ export function activate(context: vscode.ExtensionContext) {
       justify-content: center;
     }
     .card {
-      max-width: 440px;
+      max-width: 460px;
       width: 100%;
       background: #121216;
       border: 1px solid #27272a;
@@ -373,6 +374,7 @@ export function activate(context: vscode.ExtensionContext) {
       align-items: center;
       justify-content: space-between;
       margin-bottom: 16px;
+      gap: 8px;
     }
     h1 {
       font-size: 18px;
@@ -385,6 +387,7 @@ export function activate(context: vscode.ExtensionContext) {
       padding: 4px 10px;
       border-radius: 999px;
       border: 1px solid;
+      white-space: nowrap;
     }
     .badge.ok { background: rgba(16,185,129,0.12); color: #6ee7b7; border-color: rgba(16,185,129,0.35); }
     .badge.warn { background: rgba(245,158,11,0.12); color: #fcd34d; border-color: rgba(245,158,11,0.35); }
@@ -407,7 +410,7 @@ export function activate(context: vscode.ExtensionContext) {
       font-size: 13px;
       color: #a1a1aa;
       text-align: center;
-      margin: 0 0 16px 0;
+      margin: 0 0 14px 0;
       line-height: 1.5;
     }
     .field-label {
@@ -416,7 +419,7 @@ export function activate(context: vscode.ExtensionContext) {
       letter-spacing: 0.06em;
       color: #71717a;
       font-family: ui-monospace, monospace;
-      margin-bottom: 4px;
+      margin-bottom: 5px;
     }
     .code-box {
       background: #09090b;
@@ -429,11 +432,30 @@ export function activate(context: vscode.ExtensionContext) {
       word-break: break-all;
       margin-bottom: 14px;
     }
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    input[type="text"] {
+      flex: 1;
+      background: #09090b;
+      border: 1px solid #3f3f46;
+      border-radius: 8px;
+      padding: 9px 11px;
+      color: #f4f4f5;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 12px;
+      outline: none;
+    }
+    input[type="text"]:focus {
+      border-color: #6366f1;
+    }
     .actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin-top: 12px;
+      margin-top: 10px;
     }
     .btn {
       padding: 10px 12px;
@@ -452,15 +474,14 @@ export function activate(context: vscode.ExtensionContext) {
       color: #ffffff;
     }
     .btn.primary:hover { background: #4338ca; }
-    .btn.small { padding: 6px 10px; font-size: 11px; margin-top: 8px; display: inline-block; }
     .notice {
       background: rgba(99, 102, 241, 0.12);
       border: 1px solid rgba(99, 102, 241, 0.35);
       border-radius: 10px;
-      padding: 12px;
+      padding: 10px 12px;
       font-size: 12px;
       color: #c7d2fe;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
       line-height: 1.4;
     }
   </style>
@@ -477,75 +498,104 @@ export function activate(context: vscode.ExtensionContext) {
     </p>
     <div class="qr-box">${svgQr}</div>
 
+    <div class="field-label">Your Vercel Web App URL (Saved Once)</div>
+    <div class="input-row">
+      <input id="pwaUrlInput" type="text" value="${escapedPwaUrl}" placeholder="https://your-app.vercel.app" />
+      <button class="btn primary" onclick="savePwaUrl()">Save</button>
+    </div>
+
     <div class="field-label">Active Tunnel Endpoint</div>
     <div class="code-box">${endpoint}</div>
-
-    ${pwaUrl ? `<div class="field-label">Vercel Web App</div><div class="code-box">${pwaUrl}</div>` : ''}
 
     <div class="actions">
       <button class="btn primary" onclick="send('copyConnectLink')">Copy 1-Tap Link</button>
       <button class="btn" onclick="send('copyEndpoint')">Copy Tunnel URL</button>
-      <button class="btn" onclick="send('setPwaUrl')">${pwaUrl ? 'Change Vercel URL' : 'Set Vercel URL'}</button>
       <button class="btn" onclick="send('restartTunnel')">Restart Tunnel</button>
+      <button class="btn" onclick="send('refresh')">Refresh Status</button>
     </div>
   </div>
   <script>
     const vscode = acquireVsCodeApi();
-    function send(cmd) { vscode.postMessage({ command: cmd }); }
+    function send(cmd, value) { vscode.postMessage({ command: cmd, value: value }); }
+    function savePwaUrl() {
+      const val = document.getElementById('pwaUrlInput').value || '';
+      send('savePwaUrl', val);
+    }
   </script>
 </body>
 </html>`;
   }
 
   async function openQrPanel() {
-    await ensureCompanionDaemon();
-    if (!activeTunnelUrl) {
-      await ensureCloudflareTunnel(false);
-    }
+    try {
+      if (qrPanel) {
+        qrPanel.reveal(vscode.ViewColumn.Active);
+      } else {
+        qrPanel = vscode.window.createWebviewPanel(
+          'antigravityMobileQr',
+          'Antigravity Mobile — Scan to Connect',
+          vscode.ViewColumn.Active,
+          { enableScripts: true }
+        );
 
-    // Prompt once for Vercel URL if not saved yet
-    if (!getPwaUrl()) {
-      await promptForPwaUrl();
-    }
+        qrPanel.onDidDispose(() => {
+          qrPanel = null;
+        });
 
-    if (qrPanel) {
-      qrPanel.reveal(vscode.ViewColumn.Beside);
-      await renderQrWebview(qrPanel);
-      return;
-    }
+        qrPanel.webview.onDidReceiveMessage(async (msg: { command: string; value?: string }) => {
+          const endpoint = activeTunnelUrl || getCompanionUrl();
+          const pwaUrl = getPwaUrl();
+          const connectLink = pwaUrl ? `${pwaUrl}?endpoint=${encodeURIComponent(endpoint)}` : endpoint;
 
-    qrPanel = vscode.window.createWebviewPanel(
-      'antigravityMobileQr',
-      'Antigravity Mobile — Scan to Connect',
-      vscode.ViewColumn.Beside,
-      { enableScripts: true }
-    );
-
-    qrPanel.onDidDispose(() => {
-      qrPanel = null;
-    });
-
-    qrPanel.webview.onDidReceiveMessage(async (msg: { command: string }) => {
-      const endpoint = activeTunnelUrl || getCompanionUrl();
-      const pwaUrl = getPwaUrl();
-      const connectLink = pwaUrl ? `${pwaUrl}?endpoint=${encodeURIComponent(endpoint)}` : endpoint;
-
-      if (msg.command === 'copyConnectLink') {
-        await vscode.env.clipboard.writeText(connectLink);
-        vscode.window.showInformationMessage('Copied 1-Tap Mobile Connect Link to clipboard!');
-      } else if (msg.command === 'copyEndpoint') {
-        await vscode.env.clipboard.writeText(endpoint);
-        vscode.window.showInformationMessage('Copied Cloudflare Tunnel URL to clipboard!');
-      } else if (msg.command === 'setPwaUrl') {
-        await promptForPwaUrl();
-        if (qrPanel) await renderQrWebview(qrPanel);
-      } else if (msg.command === 'restartTunnel') {
-        await ensureCloudflareTunnel(true);
-        if (qrPanel) await renderQrWebview(qrPanel);
+          if (msg.command === 'copyConnectLink') {
+            await vscode.env.clipboard.writeText(connectLink);
+            vscode.window.showInformationMessage('Copied 1-Tap Mobile Connect Link to clipboard!');
+          } else if (msg.command === 'copyEndpoint') {
+            await vscode.env.clipboard.writeText(endpoint);
+            vscode.window.showInformationMessage('Copied Cloudflare Tunnel URL to clipboard!');
+          } else if (msg.command === 'savePwaUrl') {
+            const clean = (msg.value || '').trim().replace(/\/+$/, '');
+            if (clean && !clean.startsWith('http://') && !clean.startsWith('https://')) {
+              const prefixed = `https://${clean}`;
+              await vscode.workspace
+                .getConfiguration('antigravityMobile')
+                .update('pwaUrl', prefixed, vscode.ConfigurationTarget.Global);
+            } else {
+              await vscode.workspace
+                .getConfiguration('antigravityMobile')
+                .update('pwaUrl', clean, vscode.ConfigurationTarget.Global);
+            }
+            vscode.window.showInformationMessage('Saved Vercel Web App URL! QR Code updated.');
+            if (qrPanel) await renderQrWebview(qrPanel);
+          } else if (msg.command === 'restartTunnel') {
+            await ensureCompanionDaemon();
+            await ensureCloudflareTunnel(true);
+            if (qrPanel) await renderQrWebview(qrPanel);
+          } else if (msg.command === 'refresh') {
+            await ensureCompanionDaemon();
+            await ensureCloudflareTunnel(false);
+            if (qrPanel) await renderQrWebview(qrPanel);
+          }
+        });
       }
-    });
 
-    await renderQrWebview(qrPanel);
+      // Render IMMEDIATELY so the user gets instant visual feedback
+      await renderQrWebview(qrPanel);
+
+      // Refresh daemon & tunnel in the background, then update QR if URL changed
+      const prevUrl = activeTunnelUrl;
+      await ensureCompanionDaemon();
+      if (!activeTunnelUrl) {
+        await ensureCloudflareTunnel(false);
+      }
+      if (qrPanel && activeTunnelUrl !== prevUrl) {
+        await renderQrWebview(qrPanel);
+      }
+    } catch (err: unknown) {
+      vscode.window.showErrorMessage(
+        `Antigravity Mobile QR Error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 
   // 6. Telemetry Streaming
