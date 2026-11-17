@@ -1,180 +1,464 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Monitor,
   MousePointer,
   Keyboard,
   RotateCw,
-  Maximize2,
-  Terminal,
-  Layers,
-  Sparkles,
+  ZoomIn,
+  ZoomOut,
+  Send,
+  ClipboardPaste,
+  ChevronUp,
+  ChevronDown,
+  Play,
+  Pause,
+  AppWindow,
+  AlertTriangle,
 } from 'lucide-react';
-import { DesktopStatus } from '@/lib/companion-client';
+import { DesktopStatus, DesktopWindow } from '@/lib/companion-client';
 import { cn } from '@/lib/utils';
 
 interface RemoteDesktopViewProps {
+  baseUrl: string;
   status: DesktopStatus | null;
   onSendInput: (payload: Record<string, unknown>) => Promise<Record<string, unknown>>;
   onRefresh: () => void;
 }
 
 export function RemoteDesktopView({
+  baseUrl,
   status,
   onSendInput,
   onRefresh,
 }: RemoteDesktopViewProps) {
   const [clickIndicator, setClickIndicator] = useState<{ x: number; y: number } | null>(null);
   const [lastAction, setLastAction] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const [frameUrl, setFrameUrl] = useState<string | null>(null);
+  const [frameError, setFrameError] = useState<string | null>(null);
+  const [isLive, setIsLive] = useState(true);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [tapMode, setTapMode] = useState<'click' | 'double_click' | 'right_click'>('click');
+  const [chatText, setChatText] = useState('');
+  const [isSendingText, setIsSendingText] = useState(false);
+  const [screenRes, setScreenRes] = useState<{ width: number; height: number }>({
+    width: status?.screenResolution?.width || 1920,
+    height: status?.screenResolution?.height || 1080,
+  });
+  const [liveWindowTitle, setLiveWindowTitle] = useState<string>(status?.activeWindow || 'Desktop');
 
-  const handleCanvasClick = async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const resW = status?.screenResolution?.width || 1920;
-    const resH = status?.screenResolution?.height || 1080;
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * resW);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * resH);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const prevBlobUrlRef = useRef<string | null>(null);
+  const inFlightRef = useRef(false);
 
-    setClickIndicator({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    setTimeout(() => setClickIndicator(null), 800);
+  const fetchFrame = useCallback(async () => {
+    if (!baseUrl || inFlightRef.current) return;
+    inFlightRef.current = true;
+    try {
+      const maxWidth = isZoomed ? 1920 : 1280;
+      const quality = isZoomed ? 82 : 70;
+      const res = await fetch(
+        `${baseUrl.replace(/\/+$/, '')}/api/desktop/frame?maxWidth=${maxWidth}&quality=${quality}&t=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(errBody.error || `HTTP ${res.status}`);
+      }
+      const w = Number(res.headers.get('X-Screen-Width'));
+      const h = Number(res.headers.get('X-Screen-Height'));
+      const win = res.headers.get('X-Active-Window');
+      if (w > 0 && h > 0) setScreenRes({ width: w, height: h });
+      if (win) {
+        try {
+          setLiveWindowTitle(decodeURIComponent(win));
+        } catch {
+          setLiveWindowTitle(win);
+        }
+      }
+
+      const blob = await res.blob();
+      const nextUrl = URL.createObjectURL(blob);
+      if (prevBlobUrlRef.current) {
+        URL.revokeObjectURL(prevBlobUrlRef.current);
+      }
+      prevBlobUrlRef.current = nextUrl;
+      setFrameUrl(nextUrl);
+      setFrameError(null);
+    } catch (err: unknown) {
+      setFrameError(err instanceof Error ? err.message : 'Screen capture unavailable');
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [baseUrl, isZoomed]);
+
+  // Live frame polling loop while Desktop tab is mounted & live is ON
+  useEffect(() => {
+    fetchFrame();
+    if (!isLive) return;
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchFrame();
+    }, 650);
+    return () => clearInterval(interval);
+  }, [isLive, fetchFrame]);
+
+  useEffect(() => {
+    return () => {
+      if (prevBlobUrlRef.current) {
+        URL.revokeObjectURL(prevBlobUrlRef.current);
+      }
+    };
+  }, []);
+
+  const scheduleQuickRefresh = () => {
+    setTimeout(() => fetchFrame(), 200);
+    setTimeout(() => fetchFrame(), 700);
+  };
+
+  const handleImageClick = async (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!imgRef.current) return;
+    const rect = imgRef.current.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    const x = Math.round((relX / rect.width) * screenRes.width);
+    const y = Math.round((relY / rect.height) * screenRes.height);
+
+    setClickIndicator({ x: relX, y: relY });
+    setTimeout(() => setClickIndicator(null), 650);
 
     try {
-      const res = await onSendInput({ action: 'click', x, y, button: 'left' });
-      setLastAction(`Clicked at screen (${x}, ${y})`);
+      await onSendInput({
+        action: tapMode,
+        x,
+        y,
+        button: tapMode === 'right_click' ? 'right' : 'left',
+      });
+      setLastAction(`${tapMode.replace('_', ' ')} at (${x}, ${y})`);
+      scheduleQuickRefresh();
     } catch (err: unknown) {
       setLastAction(`Input error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
-  const handleShortcut = async (keyCombination: string) => {
+  const handleScroll = async (delta: number) => {
+    try {
+      await onSendInput({
+        action: 'scroll',
+        x: Math.round(screenRes.width * 0.75),
+        y: Math.round(screenRes.height * 0.5),
+        delta,
+      });
+      setLastAction(delta > 0 ? 'Scrolled up' : 'Scrolled down');
+      scheduleQuickRefresh();
+    } catch (err: unknown) {
+      setLastAction(`Scroll error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleShortcut = async (keyCombination: string, label?: string) => {
     try {
       await onSendInput({ action: 'shortcut', shortcut: keyCombination });
-      setLastAction(`Dispatched shortcut: ${keyCombination}`);
+      setLastAction(`Sent ${label || keyCombination}`);
+      scheduleQuickRefresh();
     } catch (err: unknown) {
       setLastAction(`Shortcut error: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
+  const handleSendText = async (submit: boolean) => {
+    if (!chatText.trim() || isSendingText) return;
+    setIsSendingText(true);
+    try {
+      await onSendInput({
+        action: 'type_text',
+        text: chatText,
+        submit,
+      });
+      setLastAction(submit ? 'Sent prompt to PC (Paste + Enter)' : 'Pasted text into PC');
+      setChatText('');
+      scheduleQuickRefresh();
+    } catch (err: unknown) {
+      setLastAction(`Type error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsSendingText(false);
+    }
+  };
+
+  const handleFocusWindow = async (win: DesktopWindow) => {
+    try {
+      await onSendInput({ action: 'focus_window', hwnd: win.hwnd, windowTitle: win.title });
+      setLiveWindowTitle(win.title);
+      setLastAction(`Focused "${win.title}"`);
+      scheduleQuickRefresh();
+      onRefresh();
+    } catch (err: unknown) {
+      setLastAction(`Window switch error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const shortcuts = [
-    { label: 'Cmd+P', key: 'cmd+p', desc: 'Quick Open' },
-    { label: 'Cmd+Shift+P', key: 'cmd+shift+p', desc: 'Command Palette' },
-    { label: 'Cmd+S', key: 'cmd+s', desc: 'Save File' },
-    { label: 'Cmd+`', key: 'cmd+`', desc: 'Toggle Terminal' },
-    { label: 'Esc', key: 'escape', desc: 'Cancel' },
-    { label: 'Enter', key: 'enter', desc: 'Accept' },
+    { label: 'Enter', key: 'enter' },
+    { label: 'Esc', key: 'escape' },
+    { label: 'Backspace', key: 'backspace' },
+    { label: 'Ctrl+L (Chat)', key: 'ctrl+l' },
+    { label: 'Ctrl+I (Inline AI)', key: 'ctrl+i' },
+    { label: 'Ctrl+Shift+P', key: 'ctrl+shift+p' },
+    { label: 'Ctrl+S', key: 'ctrl+s' },
+    { label: 'Alt+Tab', key: 'alt+tab' },
   ];
 
+  const windows = Array.isArray(status?.windows) ? status!.windows! : [];
+
   return (
-    <div className="p-3.5 sm:p-5 space-y-4 max-w-4xl mx-auto">
-      {/* STATUS STRIP */}
-      <div className="hairline-card rounded-xl p-4 border border-hairline bg-surface/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+    <div className="p-3 sm:p-4 space-y-3 max-w-5xl mx-auto">
+      {/* TOP BAR: LIVE STATUS + STREAM CONTROLS */}
+      <div className="hairline-card rounded-xl p-3 border border-hairline bg-surface/40 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
             <Monitor className="w-4 h-4" />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-display font-semibold text-sm text-white">
-                Remote Desktop & Screen Controller
+              <span className="font-display font-semibold text-xs sm:text-sm text-white">
+                Live PC Screen
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-                Level 1/5: Fully Supported
+              <span
+                className={cn(
+                  'text-[10px] font-mono px-1.5 py-0.5 rounded-full border',
+                  isLive && !frameError
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                )}
+              >
+                {isLive && !frameError ? '● LIVE' : 'PAUSED'}
               </span>
             </div>
-            <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
-              Engine: {status?.mode || 'Companion Virtual Framebuffer & Input Bridge'}
+            <p className="text-[10px] font-mono text-zinc-400 truncate max-w-[200px] sm:max-w-md">
+              {liveWindowTitle} ({screenRes.width}×{screenRes.height})
             </p>
           </div>
         </div>
 
-        <button
-          onClick={onRefresh}
-          className="p-2 rounded-lg bg-surface hover:bg-surfaceHover border border-hairline text-zinc-300 active:scale-95 self-start sm:self-auto"
-          title="Refresh screen status"
-        >
-          <RotateCw className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setIsLive((v) => !v)}
+            className={cn(
+              'px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1 active:scale-95',
+              isLive
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : 'bg-surface text-zinc-300 border-hairline'
+            )}
+          >
+            {isLive ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+            <span>{isLive ? 'Live' : 'Start'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsZoomed((z) => !z)}
+            className={cn(
+              'px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1 active:scale-95',
+              isZoomed
+                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                : 'bg-surface text-zinc-300 border-hairline'
+            )}
+            title="Toggle 2x zoom for tapping chat boxes & dropdowns"
+          >
+            {isZoomed ? <ZoomOut className="w-3.5 h-3.5" /> : <ZoomIn className="w-3.5 h-3.5" />}
+            <span>{isZoomed ? '2x' : 'Fit'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onRefresh();
+              fetchFrame();
+            }}
+            className="p-1.5 rounded-lg bg-surface hover:bg-surfaceHover border border-hairline text-zinc-300 active:scale-95"
+            title="Refresh frame & windows"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      {lastAction && (
-        <div className="p-2.5 rounded-lg text-xs font-mono bg-cyan-500/10 border border-cyan-500/30 text-cyan-300">
-          {lastAction}
-        </div>
-      )}
-
-      {/* ON-SCREEN IDE SHORTCUT BAR */}
-      <div className="hairline-card rounded-xl p-3 border border-hairline bg-surface/30 space-y-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-          <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
-          <span>On-Screen IDE Shortcuts</span>
-        </div>
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
-          {shortcuts.map((sc) => (
+      {/* 1-TAP DESKTOP WINDOW SWITCHER */}
+      {windows.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+          <AppWindow className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+          {windows.slice(0, 10).map((win) => (
             <button
-              key={sc.key}
-              onClick={() => handleShortcut(sc.key)}
-              className="px-3 py-2 rounded-lg bg-obsidian hover:bg-surface border border-hairline text-xs font-mono text-zinc-200 whitespace-nowrap active:scale-95 transition min-h-[44px] flex flex-col items-center justify-center shrink-0"
+              key={win.hwnd}
+              type="button"
+              onClick={() => handleFocusWindow(win)}
+              className={cn(
+                'px-2.5 py-1 rounded-full text-[11px] font-mono border whitespace-nowrap transition active:scale-95 shrink-0 max-w-[180px] truncate',
+                win.active
+                  ? 'bg-indigo-600/25 text-indigo-200 border-indigo-500/50'
+                  : win.isAntigravity
+                  ? 'bg-cyan-500/10 text-cyan-200 border-cyan-500/30 hover:bg-cyan-500/20'
+                  : 'bg-surface/60 text-zinc-400 border-hairline hover:text-zinc-200'
+              )}
+              title={win.title}
             >
-              <span className="text-indigo-300 font-semibold">{sc.label}</span>
-              <span className="text-[9px] text-zinc-500">{sc.desc}</span>
+              {win.title}
             </button>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* INTERACTIVE SCREEN CANVAS */}
-      <div className="hairline-card rounded-xl overflow-hidden border border-hairline bg-black shadow-2xl">
-        <div className="bg-carbon px-3 py-2 border-b border-hairline flex items-center justify-between text-xs font-mono text-zinc-400">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Interactive IDE Display ({status?.screenResolution.width || 1920}x{status?.screenResolution.height || 1080})</span>
+      {/* LIVE SCREEN CANVAS */}
+      <div className="hairline-card rounded-xl border border-hairline bg-obsidian overflow-hidden">
+        <div className="px-3 py-1.5 border-b border-hairline bg-carbon/90 flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
+          {/* Tap Mode Switch */}
+          <div className="flex items-center gap-1">
+            {(['click', 'double_click', 'right_click'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setTapMode(m)}
+                className={cn(
+                  'px-2 py-0.5 rounded border text-[10px] transition',
+                  tapMode === m
+                    ? 'bg-indigo-600/25 text-indigo-200 border-indigo-500/50'
+                    : 'bg-surface/40 text-zinc-400 border-hairline'
+                )}
+              >
+                {m === 'click' ? 'Click' : m === 'double_click' ? '2× Click' : 'Right'}
+              </button>
+            ))}
           </div>
-          <span className="text-[10px] text-zinc-500">Tap to Dispatch Pointer Click</span>
+
+          {/* Scroll Controls */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => handleScroll(420)}
+              className="px-2 py-0.5 rounded bg-surface hover:bg-surfaceHover border border-hairline text-zinc-300 flex items-center gap-0.5 active:scale-95"
+            >
+              <ChevronUp className="w-3 h-3" /> Up
+            </button>
+            <button
+              type="button"
+              onClick={() => handleScroll(-420)}
+              className="px-2 py-0.5 rounded bg-surface hover:bg-surfaceHover border border-hairline text-zinc-300 flex items-center gap-0.5 active:scale-95"
+            >
+              <ChevronDown className="w-3 h-3" /> Down
+            </button>
+          </div>
         </div>
 
-        <div
-          ref={canvasRef}
-          onClick={handleCanvasClick}
-          className="relative w-full aspect-[16/10] bg-zinc-950 flex flex-col items-center justify-center cursor-crosshair select-none overflow-hidden"
-        >
-          {/* Simulated IDE Layout Canvas */}
-          <div className="w-full h-full p-4 flex flex-col justify-between text-left opacity-90">
-            {/* Top Editor Tab Bar */}
-            <div className="flex items-center gap-2 pb-2 border-b border-zinc-800">
-              <span className="px-3 py-1 rounded bg-zinc-800 text-xs font-mono text-zinc-200">
-                extension.ts
-              </span>
-              <span className="px-3 py-1 rounded bg-zinc-900 text-xs font-mono text-zinc-500">
-                server.mjs
-              </span>
+        {/* SCREEN VIEWPORT */}
+        <div className={cn('relative w-full bg-black', isZoomed ? 'overflow-auto max-h-[60vh]' : 'overflow-hidden')}>
+          {frameUrl ? (
+            <div className={cn('relative inline-block', isZoomed ? 'w-[200%]' : 'w-full')}>
+              <img
+                ref={imgRef}
+                src={frameUrl}
+                alt="Live PC Screen"
+                onClick={handleImageClick}
+                draggable={false}
+                className="w-full h-auto block select-none cursor-crosshair"
+              />
+              {clickIndicator && (
+                <div
+                  className="absolute w-7 h-7 -ml-3.5 -mt-3.5 rounded-full border-2 border-cyan-400 bg-cyan-400/25 pointer-events-none animate-ping"
+                  style={{ left: clickIndicator.x, top: clickIndicator.y }}
+                />
+              )}
             </div>
-
-            {/* Code lines representation */}
-            <div className="font-mono text-[11px] text-zinc-400 space-y-1.5 py-4">
-              <div className="text-indigo-400">// Google Antigravity IDE Live Canvas</div>
-              <div><span className="text-violet-400">export function</span> <span className="text-amber-300">activate</span>(context: ExtensionContext) &#123;</div>
-              <div className="pl-4 text-zinc-300">vscode.lm.selectChatModels(&#123;&#125;).then(models =&gt; &#123;</div>
-              <div className="pl-8 text-emerald-300">postTelemetry(&apos;model_discovery&apos;, models);</div>
-              <div className="pl-4 text-zinc-300">&#125;);</div>
-              <div>&#125;</div>
+          ) : (
+            <div className="py-12 px-4 text-center space-y-2.5">
+              {frameError ? (
+                <>
+                  <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
+                  <div className="text-xs font-mono text-amber-300">
+                    Screen Capture Unavailable: {frameError}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 max-w-md mx-auto leading-relaxed">
+                    Make sure your laptop screen is unlocked and the companion daemon was started by Antigravity IDE (run <strong>Developer: Reload Window</strong> in Antigravity so it launches inside your desktop session).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <RotateCw className="w-6 h-6 text-cyan-400 mx-auto animate-spin" />
+                  <div className="text-xs font-mono text-zinc-400">Connecting to live PC screen...</div>
+                </>
+              )}
             </div>
-
-            {/* Bottom Status bar representation */}
-            <div className="pt-2 border-t border-zinc-800 flex items-center justify-between text-[10px] font-mono text-zinc-500">
-              <span>TypeScript • UTF-8 • LF • Antigravity Agent Active</span>
-              <span className="text-emerald-400">● Live Feed</span>
-            </div>
-          </div>
-
-          {/* Touch Click Pulse Marker */}
-          {clickIndicator && (
-            <span
-              className="absolute w-8 h-8 rounded-full border-2 border-cyan-400 bg-cyan-400/30 animate-ping pointer-events-none"
-              style={{ left: clickIndicator.x - 16, top: clickIndicator.y - 16 }}
-            />
           )}
+        </div>
+      </div>
+
+      {/* MOBILE TYPE & SEND TO ANTIGRAVITY CHAT BAR */}
+      <div className="hairline-card rounded-xl p-3 border border-indigo-500/30 bg-surface/40 space-y-2">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="font-display font-semibold text-white flex items-center gap-1.5">
+            <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
+            Type &amp; Send to PC Chat Box
+          </span>
+          <span className="text-[10px] font-mono text-zinc-400">
+            Tap chat input above, then Send
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          <textarea
+            rows={2}
+            value={chatText}
+            onChange={(e) => setChatText(e.target.value)}
+            placeholder="Write a prompt for Antigravity IDE's built-in chat bar..."
+            className="flex-1 bg-obsidian text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 rounded-lg px-3 py-2 border border-hairline focus:outline-none focus:border-indigo-500 resize-none"
+          />
+          <div className="flex sm:flex-col gap-1.5 shrink-0">
+            <button
+              type="button"
+              disabled={!chatText.trim() || isSendingText}
+              onClick={() => handleSendText(true)}
+              className="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-medium text-white flex items-center justify-center gap-1.5 transition active:scale-95"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Send</span>
+            </button>
+            <button
+              type="button"
+              disabled={!chatText.trim() || isSendingText}
+              onClick={() => handleSendText(false)}
+              className="flex-1 sm:flex-none px-3 py-2 rounded-lg bg-surface hover:bg-surfaceHover disabled:opacity-40 border border-hairline text-xs font-mono text-zinc-300 flex items-center justify-center gap-1.5 transition active:scale-95"
+            >
+              <ClipboardPaste className="w-3.5 h-3.5" />
+              <span>Paste</span>
+            </button>
+          </div>
+        </div>
+
+        {lastAction && (
+          <div className="text-[10px] font-mono text-cyan-300 flex items-center gap-1.5">
+            <MousePointer className="w-3 h-3" />
+            <span>{lastAction}</span>
+          </div>
+        )}
+      </div>
+
+      {/* IDE SHORTCUT KEYS */}
+      <div className="hairline-card rounded-xl p-3 border border-hairline bg-surface/30 space-y-2">
+        <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+          Quick Keyboard Shortcuts
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {shortcuts.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => handleShortcut(s.key, s.label)}
+              className="px-2.5 py-1.5 rounded-lg bg-obsidian hover:bg-surface border border-hairline text-[11px] font-mono text-zinc-200 transition active:scale-95"
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
     </div>

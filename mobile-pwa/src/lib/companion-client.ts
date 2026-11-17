@@ -208,12 +208,21 @@ export interface BrowseDirectoryResponse {
   directories: BrowseDirectoryEntry[];
 }
 
+export interface DesktopWindow {
+  hwnd: number;
+  title: string;
+  active: boolean;
+  isAntigravity: boolean;
+}
+
 export interface DesktopStatus {
   supported: boolean;
   mode: string;
   tools: Record<string, boolean>;
   screenResolution: { width: number; height: number };
   activeWindow: string;
+  windows?: DesktopWindow[];
+  lastError?: string | null;
 }
 
 export type CompanionWsEvent =
@@ -600,14 +609,16 @@ export class AntigravityCompanionClient {
 
   async getDesktopStatus(): Promise<DesktopStatus> {
     const data = await this.request<any>('/api/desktop');
-    const width = data.resolution?.width || data.screenResolution?.width || 1440;
-    const height = data.resolution?.height || data.screenResolution?.height || 900;
+    const width = data.resolution?.width || data.screenResolution?.width || 1920;
+    const height = data.resolution?.height || data.screenResolution?.height || 1080;
     return {
       supported: typeof data.supported === 'boolean' ? data.supported : Boolean(data.available),
-      mode: data.mode || data.transport || 'Virtual Framebuffer Bridge',
+      mode: data.mode || data.transport || 'Live Windows Screen Capture',
       tools: data.tools || {},
       screenResolution: { width, height },
       activeWindow: data.activeWindow || 'Google Antigravity IDE',
+      windows: Array.isArray(data.windows) ? data.windows : [],
+      lastError: data.lastError || null,
     };
   }
 

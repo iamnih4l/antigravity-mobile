@@ -26,7 +26,7 @@ export async function createCompanionServer({
   const security = new SecurityManager(db, { authorizedRoots });
   const workspace = new WorkspaceManager(security, db, { persistWorkspaces });
   const git = new GitManager(workspace, db);
-  const desktop = new DesktopController(db);
+  const desktop = new DesktopController(db, { enableHelper: persistWorkspaces });
   const tunnel = new CloudflareTunnelManager({
     port,
     statePath: path.join(path.dirname(dbPath), 'tunnel-state.json'),
@@ -134,7 +134,7 @@ export async function createCompanionServer({
     const url = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
     const pathname = url.pathname;
 
-    if (!security.checkRateLimit(req.socket.remoteAddress || 'local')) {
+    if (!security.checkRateLimit(req.socket.remoteAddress || 'local', 600)) {
       return sendJson(res, 429, { error: 'Rate limit exceeded' });
     }
 
@@ -383,7 +383,28 @@ export async function createCompanionServer({
       }
 
       if (pathname === '/api/desktop' && req.method === 'GET') {
-        return sendJson(res, 200, desktop.getStatus());
+        return sendJson(res, 200, await desktop.getStatusAsync());
+      }
+
+      if (pathname === '/api/desktop/windows' && req.method === 'GET') {
+        return sendJson(res, 200, await desktop.listWindows());
+      }
+
+      if (pathname === '/api/desktop/frame' && req.method === 'GET') {
+        const maxWidth = Number(url.searchParams.get('maxWidth') || 1280);
+        const quality = Number(url.searchParams.get('quality') || 70);
+        const frame = await desktop.captureFrame({ maxWidth, quality });
+        res.writeHead(200, {
+          'Content-Type': 'image/jpeg',
+          'Content-Length': frame.buffer.length,
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Expose-Headers': 'X-Screen-Width, X-Screen-Height, X-Active-Window',
+          'X-Screen-Width': String(frame.screenWidth),
+          'X-Screen-Height': String(frame.screenHeight),
+          'X-Active-Window': encodeURIComponent(frame.activeWindow || ''),
+        });
+        return res.end(frame.buffer);
       }
 
       if (pathname === '/api/desktop/input' && req.method === 'POST') {
@@ -502,6 +523,7 @@ export async function createCompanionServer({
     tunnel,
     close: async () => {
       workspace.stopWatching();
+      desktop.close();
       tunnel.stop();
       terminal.closeAll();
       db.close();

@@ -634,6 +634,7 @@ export default function Home() {
 
           {activeView === 'desktop' && (
             <RemoteDesktopView
+              baseUrl={getClient().baseUrl}
               status={desktopStatus}
               onSendInput={(payload) => getClient().sendDesktopInput(payload)}
               onRefresh={fetchDesktop}
