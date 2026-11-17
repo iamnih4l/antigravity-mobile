@@ -20,10 +20,11 @@ export async function createCompanionServer({
   dbPath = path.join(__dirname, '../data/antigravity-mobile.db'),
   authorizedRoots = [path.resolve(__dirname, '../..')],
   autoTunnel = process.env.DISABLE_AUTO_TUNNEL !== '1',
+  persistWorkspaces = true,
 } = {}) {
   const db = new SqliteStore(dbPath);
   const security = new SecurityManager(db, { authorizedRoots });
-  const workspace = new WorkspaceManager(security, db);
+  const workspace = new WorkspaceManager(security, db, { persistWorkspaces });
   const git = new GitManager(workspace, db);
   const desktop = new DesktopController(db);
   const tunnel = new CloudflareTunnelManager({
@@ -32,6 +33,7 @@ export async function createCompanionServer({
     autoStart: autoTunnel,
   });
   const wsClients = new Set();
+  const connectedIdeWindows = new Map(); // workspacePath -> { project, activeFile, lastSeenAt }
 
   function broadcast(payload) {
     const data = JSON.stringify(payload);
@@ -43,6 +45,11 @@ export async function createCompanionServer({
       }
     }
   }
+
+  // Start real-time recursive filesystem watcher on the active workspace
+  workspace.startWatching((evt) => {
+    broadcast(evt);
+  });
 
   async function createApprovalRequest(req) {
     const approval = {
@@ -138,12 +145,37 @@ export async function createCompanionServer({
           status: 'online',
           alwaysReadyMode: true,
           uptimeSeconds: Math.floor(process.uptime()),
-          ideConnected: acp.ideConnected,
+          ideConnected: acp.ideConnected || connectedIdeWindows.size > 0,
+          connectedWindows: Array.from(connectedIdeWindows.values()),
           activeWorkspace: workspace.activeWorkspace,
           tunnelUrl: tunnel.url,
           tunnelStatus: tunnel.status,
           timestamp: new Date().toISOString(),
         });
+      }
+
+      if (pathname === '/api/ide/telemetry' && req.method === 'POST') {
+        const body = await readBody(req);
+        acp.registerIdeTelemetry(body);
+        if (body.workspace && typeof body.workspace === 'string') {
+          const resolvedWs = path.resolve(body.workspace);
+          connectedIdeWindows.set(resolvedWs.toLowerCase(), {
+            workspace: resolvedWs,
+            project: body.project || path.basename(resolvedWs),
+            activeFile: body.details?.file || null,
+            lastEvent: body.eventType || 'heartbeat',
+            lastSeenAt: new Date().toISOString(),
+          });
+        }
+        await db.recordEvent({
+          project: body.project || path.basename(workspace.activeWorkspace),
+          category: 'ide_event',
+          description: body.description || `IDE telemetry: ${body.eventType || 'update'}`,
+          status: 'completed',
+          details: body.details || body,
+        });
+        broadcast({ type: 'ide_telemetry', data: body });
+        return sendJson(res, 200, { ok: true, ideConnected: true });
       }
 
       if (pathname === '/api/tunnel' && req.method === 'GET') {
@@ -469,6 +501,7 @@ export async function createCompanionServer({
     desktop,
     tunnel,
     close: async () => {
+      workspace.stopWatching();
       tunnel.stop();
       terminal.closeAll();
       db.close();

@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 
 interface ProjectFileExplorerProps {
   activeWorkspace: string;
+  liveRevision?: number;
   onListDirectory: (dir: string) => Promise<{ directory: string; files: FileEntry[] }>;
   onReadFile: (path: string) => Promise<FileContent>;
   onWriteFile: (path: string, content: string, origin: 'agent' | 'manual') => Promise<void>;
@@ -32,6 +33,7 @@ interface ProjectFileExplorerProps {
 
 export function ProjectFileExplorer({
   activeWorkspace,
+  liveRevision = 0,
   onListDirectory,
   onReadFile,
   onWriteFile,
@@ -69,6 +71,23 @@ export function ProjectFileExplorer({
     setDiffView(null);
     loadDirectory('.');
   }, [activeWorkspace]);
+
+  // Live refresh current folder & non-editing open file whenever workspace changes on PC
+  useEffect(() => {
+    if (!liveRevision) return;
+    onListDirectory(currentDir)
+      .then((res) => {
+        if (Array.isArray(res.files)) setFiles(res.files);
+      })
+      .catch(() => {});
+    if (selectedFile && !isEditing) {
+      onReadFile(selectedFile)
+        .then((data) => {
+          if (typeof data.content === 'string') setFileContent(data.content);
+        })
+        .catch(() => {});
+    }
+  }, [liveRevision]);
 
   const handleOpenFile = async (file: FileEntry) => {
     if (file.isDirectory) {

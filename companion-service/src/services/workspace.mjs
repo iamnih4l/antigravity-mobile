@@ -43,10 +43,128 @@ export class WorkspaceManager {
     this.security = security;
     this.db = db;
     this.homeDir = path.resolve(os.homedir());
+    this.persistWorkspaces = options.persistWorkspaces !== false;
     this.storePath = options.storePath || path.resolve(path.dirname(db.dbPath), 'workspaces.json');
     this.activeWorkspace = Array.from(this.security.authorizedRoots)[0];
     this.fileOriginLedger = new Map(); // filePath -> { origin: 'agent' | 'manual', agentId, timestamp }
-    this._loadPersistedWorkspaces();
+    this.onChangeCallback = options.onChange || null;
+    this._watcher = null;
+    this._debounceTimers = new Map();
+    if (this.persistWorkspaces) {
+      this._loadPersistedWorkspaces();
+    }
+  }
+
+  startWatching(onChangeCallback) {
+    if (onChangeCallback) this.onChangeCallback = onChangeCallback;
+    this.stopWatching();
+
+    if (!this.activeWorkspace || !fsSync.existsSync(this.activeWorkspace)) return;
+    const watchedRoot = this.activeWorkspace;
+    const projectName = path.basename(watchedRoot);
+
+    try {
+      this._watcher = fsSync.watch(watchedRoot, { recursive: true }, (eventType, filename) => {
+        if (!filename) return;
+        const normalized = String(filename).replace(/\\/g, '/');
+
+        // Detect Git index/HEAD updates as live git_changed events
+        if (normalized === '.git/HEAD' || normalized === '.git/index' || normalized.startsWith('.git/refs/')) {
+          const gitKey = '__git__';
+          if (this._debounceTimers.has(gitKey)) clearTimeout(this._debounceTimers.get(gitKey));
+          this._debounceTimers.set(
+            gitKey,
+            setTimeout(() => {
+              this._debounceTimers.delete(gitKey);
+              this.onChangeCallback?.({
+                type: 'git_changed',
+                workspace: watchedRoot,
+                project: projectName,
+                timestamp: new Date().toISOString(),
+              });
+            }, 800)
+          );
+          return;
+        }
+
+        // Ignore noisy build/cache/db paths
+        const parts = normalized.split('/');
+        if (
+          parts.some((p) => IGNORED_DIRS.has(p) || p === '.git' || p === 'dist' || p === 'build' || p === 'out') ||
+          normalized.endsWith('.db-wal') ||
+          normalized.endsWith('.db-shm') ||
+          normalized.endsWith('.db-journal') ||
+          normalized.endsWith('.db') ||
+          normalized.endsWith('tunnel-state.json') ||
+          normalized.endsWith('workspaces.json')
+        ) {
+          return;
+        }
+
+        if (this._debounceTimers.has(normalized)) {
+          clearTimeout(this._debounceTimers.get(normalized));
+        }
+
+        this._debounceTimers.set(
+          normalized,
+          setTimeout(async () => {
+            this._debounceTimers.delete(normalized);
+            const fullPath = path.join(watchedRoot, normalized);
+            const exists = fsSync.existsSync(fullPath);
+
+            // Track recent live workspace modification
+            this.fileOriginLedger.set(fullPath, {
+              origin: 'workspace_live',
+              agentId: null,
+              timestamp: new Date().toISOString(),
+            });
+
+            try {
+              await this.db.recordEvent({
+                project: projectName,
+                category: 'file_modified',
+                description: `${exists ? 'Live change' : 'Removed'} ${normalized} in ${projectName}`,
+                status: 'completed',
+                details: { path: normalized, workspace: watchedRoot, eventType, exists },
+              });
+            } catch {
+              // Ignore DB write error during close
+            }
+
+            this.onChangeCallback?.({
+              type: 'file_changed',
+              path: normalized,
+              workspace: watchedRoot,
+              project: projectName,
+              eventType,
+              exists,
+              timestamp: new Date().toISOString(),
+            });
+          }, 600)
+        );
+      });
+
+      this._watcher.on('error', () => {
+        // Ignore transient OS watch errors
+      });
+    } catch {
+      // Recursive fs.watch fallback if unsupported on a specific path
+    }
+  }
+
+  stopWatching() {
+    for (const timer of this._debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this._debounceTimers.clear();
+    if (this._watcher) {
+      try {
+        this._watcher.close();
+      } catch {
+        // Ignore
+      }
+      this._watcher = null;
+    }
   }
 
   _loadPersistedWorkspaces() {
@@ -257,6 +375,9 @@ export class WorkspaceManager {
     this.security.addAuthorizedWorkspace(resolved);
     this.activeWorkspace = resolved;
     this._persistWorkspaces();
+    if (this.onChangeCallback) {
+      this.startWatching();
+    }
 
     await this.db.recordEvent({
       project: path.basename(resolved),

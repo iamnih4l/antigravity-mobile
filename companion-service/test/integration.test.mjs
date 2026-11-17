@@ -16,7 +16,7 @@ if (!fs.existsSync(path.join(rootDir, '.git'))) {
   });
 }
 
-const instance = await createCompanionServer({ port: 8911, authorizedRoots: [rootDir], autoTunnel: false });
+const instance = await createCompanionServer({ port: 8911, authorizedRoots: [rootDir], autoTunnel: false, persistWorkspaces: false });
 const base = `http://127.0.0.1:${instance.port}`;
 
 async function api(endpoint, options = {}) {

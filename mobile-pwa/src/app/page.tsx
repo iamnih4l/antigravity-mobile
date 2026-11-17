@@ -77,6 +77,7 @@ export default function Home() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isConnectionModalOpen, setIsConnectionModalOpen] = useState(false);
   const [isProjectSwitcherOpen, setIsProjectSwitcherOpen] = useState(false);
+  const [liveRevision, setLiveRevision] = useState(0);
   const [token, setToken] = useState<string | null>(null);
 
   const clientRef = useRef<AntigravityCompanionClient | null>(null);
@@ -106,8 +107,20 @@ export default function Home() {
       fetchFiles();
       fetchGitStatus();
       fetchActivity();
-    } else if (event.type === 'ide_telemetry') {
+      setLiveRevision((r) => r + 1);
+    } else if (event.type === 'git_changed') {
+      fetchGitStatus();
       fetchActivity();
+    } else if (event.type === 'workspace_selected') {
+      fetchWorkspaces();
+      fetchFiles();
+      fetchGitStatus();
+      fetchActivity();
+      setLiveRevision((r) => r + 1);
+    } else if (event.type === 'ide_telemetry') {
+      fetchHealth();
+      fetchActivity();
+      fetchGitStatus();
     }
   }, []);
 
@@ -362,7 +375,10 @@ export default function Home() {
       fetchHealth();
       fetchApprovals();
       fetchTasks();
-    }, 6000);
+      fetchGitStatus();
+      fetchActivity();
+      fetchFiles();
+    }, 5000);
 
     return () => {
       clearInterval(interval);
@@ -560,6 +576,7 @@ export default function Home() {
           {activeView === 'files' && (
             <ProjectFileExplorer
               activeWorkspace={activeWorkspace}
+              liveRevision={liveRevision}
               onListDirectory={(dir) => fetchFiles(dir)}
               onReadFile={(path) => getClient().readFile(path)}
               onWriteFile={handleWriteFile}
