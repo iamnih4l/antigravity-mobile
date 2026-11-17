@@ -786,16 +786,18 @@ export function LiveDesktopWorkspace({
 
             <button
               type="button"
-              onClick={() => handleScroll(450)}
+              onClick={() => handleScroll(160)}
               className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 shrink-0 active:scale-95"
+              title="Scroll up smoothly"
             >
               <ChevronUp className="w-3.5 h-3.5" />
             </button>
 
             <button
               type="button"
-              onClick={() => handleScroll(-450)}
+              onClick={() => handleScroll(-160)}
               className="px-2 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 flex items-center gap-0.5 shrink-0 active:scale-95"
+              title="Scroll down smoothly"
             >
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
